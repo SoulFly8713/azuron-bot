@@ -5,7 +5,6 @@ const {
     TextInputStyle, REST, Routes, SlashCommandBuilder, ActivityType
 } = require('discord.js');
 const { joinVoiceChannel } = require('@discordjs/voice');
-require('dotenv').config();
 
 const client = new Client({
     intents: [
@@ -33,7 +32,7 @@ function createEmbed(title, description, color = 0x5865F2) {
         .setDescription(description || 'İşlem detayları aşağıdadır.')
         .setColor(color)
         .setTimestamp()
-        .setFooter({ text: 'Azure Türkiye', iconURL: client.user.displayAvatarURL() });
+        .setFooter({ text: 'Azuron Türkiye', iconURL: client.user.displayAvatarURL() });
 }
 
 function createErrorEmbed(description) {
@@ -55,7 +54,7 @@ async function sendLog(guild, title, description, color = 0xE67E22) {
 client.on('clientReady', async () => {
     console.log(`${client.user.tag} aktif.`);
     client.user.setActivity({
-        name: 'Azure Türkiye',
+        name: 'Azuron Türkiye',
         type: ActivityType.Streaming,
         url: 'https://www.twitch.tv/discord'
     });
@@ -314,7 +313,7 @@ client.on('interactionCreate', async interaction => {
                 const supportEmbed = new EmbedBuilder()
                     .setTitle('🎫 Destek Sistemi')
                     .setDescription(
-                        '**Merhaba, Azure Türkiye Destek Merkezine Hoş Geldiniz!**\n\n' +
+                        '**Merhaba, Azuron Türkiye Destek Merkezine Hoş Geldiniz!**\n\n' +
                         'Herhangi bir konuda yardıma ihtiyaç duyuyorsanız aşağıdaki menüyü kullanarak bilet oluşturabilirsiniz.\n\n' +
                         '> 📌 Biletiniz açıldığında yalnızca siz ve yetkili ekibimiz görebilir.\n' +
                         '> ⏱️ Ekibimiz en kısa sürede size geri dönecektir.\n' +
@@ -323,7 +322,7 @@ client.on('interactionCreate', async interaction => {
                     )
                     .setColor(0x5865F2)
                     .setTimestamp()
-                    .setFooter({ text: 'Azure Türkiye Destek Sistemi', iconURL: client.user.displayAvatarURL() })
+                    .setFooter({ text: 'Azuron Türkiye Destek Sistemi', iconURL: client.user.displayAvatarURL() })
                     .setThumbnail(guild.iconURL({ dynamic: true }) || client.user.displayAvatarURL());
 
                 const ticketOpenMenu = new StringSelectMenuBuilder()
@@ -482,7 +481,7 @@ client.on('interactionCreate', async interaction => {
                     .setDescription(`Bu bilet <@${interaction.user.id}> tarafından yeniden açılmıştır.\n\n<@${ownerId}> Biletiniz yeniden aktif hale getirildi.`)
                     .setColor(0x2ECC71)
                     .setTimestamp()
-                    .setFooter({ text: 'Azure Türkiye Destek Sistemi', iconURL: client.user.displayAvatarURL() });
+                    .setFooter({ text: 'Azuron Türkiye Destek Sistemi', iconURL: client.user.displayAvatarURL() });
 
                 const closeAgainButton = new ButtonBuilder()
                     .setCustomId('ticket_close_btn')
@@ -581,7 +580,7 @@ client.on('interactionCreate', async interaction => {
                 .setDescription(`Bu bilet <@${interaction.user.id}> tarafından kapatılmıştır.\n\n${ownerId ? `> 🎫 **Bilet Sahibi:** <@${ownerId}>` : ''}\n> ⏰ **Kapatma Zamanı:** <t:${Math.floor(Date.now() / 1000)}:F>`)
                 .setColor(0xE74C3C)
                 .setTimestamp()
-                .setFooter({ text: 'Azure Türkiye Destek Sistemi', iconURL: client.user.displayAvatarURL() });
+                .setFooter({ text: 'Azuron Türkiye Destek Sistemi', iconURL: client.user.displayAvatarURL() });
 
             const closedActionsMenu = new StringSelectMenuBuilder()
                 .setCustomId('ticket_closed_actions')
@@ -710,7 +709,7 @@ client.on('interactionCreate', async interaction => {
                 .setColor(ticketType.color)
                 .setTimestamp()
                 .setThumbnail(user.displayAvatarURL({ dynamic: true }))
-                .setFooter({ text: 'Azure Türkiye Destek Sistemi', iconURL: client.user.displayAvatarURL() });
+                .setFooter({ text: 'Azuron Türkiye Destek Sistemi', iconURL: client.user.displayAvatarURL() });
 
             const closeButton = new ButtonBuilder()
                 .setCustomId('ticket_close_btn')
