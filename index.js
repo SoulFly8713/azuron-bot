@@ -837,18 +837,38 @@ if (interaction.customId === 'modal_suggestion') {
 });
 
 client.on('messageDelete', async message => {
-    if (!message.guild || !message.author || message.author.bot) return;
+    if (!message.guild || !message.author || message.author.bot) return;
 
-    const logChannel = message.guild.channels.cache.get(LOG_CHANNEL_ID);
-    if (!logChannel) return;
+    const logChannel = message.guild.channels.cache.get(LOG_CHANNEL_ID);
+    if (!logChannel) return;
 
-    const deleteEmbed = createEmbed(
-        '🗑️ Mesaj Silindi',
-        `**Kullanıcı:** <@${message.author.id}> (${message.author.tag})\n**Kanal:** <#${message.channel.id}>\n\n**Silinen İçerik:**\n${message.content || '*İçerik bulunamadı veya medya silindi.*'}`,
-        0xE74C3C
-    );
+    let description = `**Kullanıcı:** <@${message.author.id}> (${message.author.tag})\n**Kanal:** <#${message.channel.id}>\n`;
 
-    await logChannel.send({ embeds: [deleteEmbed] });
+    if (message.content) {
+        description += `\n**Silinen İçerik:**\n${message.content}`;
+    }
+
+    let imageUrl = null;
+    if (message.attachments.size > 0) {
+        description += `\n\n**Silinen Medya/Ekler:**\n${message.attachments.map(a => `[Dosya Bağlantısı](${a.proxyURL})`).join('\n')}`;
+        
+        const firstAttachment = message.attachments.first();
+        if (firstAttachment.contentType && firstAttachment.contentType.startsWith('image/')) {
+            imageUrl = firstAttachment.proxyURL; 
+        }
+    }
+
+    if (!message.content && message.attachments.size === 0) {
+        description += `\n*İçerik bulunamadı veya sadece sistem mesajı/embed.*`;
+    }
+
+    const deleteEmbed = createEmbed('🗑️ Mesaj Silindi', description, 0xE74C3C);
+    
+    if (imageUrl) {
+        deleteEmbed.setImage(imageUrl);
+    }
+
+    await logChannel.send({ embeds: [deleteEmbed] }).catch(() => {});
 });
 
 client.on('messageUpdate', async (oldMessage, newMessage) => {
