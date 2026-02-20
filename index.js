@@ -88,6 +88,11 @@ client.on('clientReady', async () => {
             .setDMPermission(false)
             .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator),
         new SlashCommandBuilder()
+            .setName('sil')
+            .setDescription('Belirtilen miktarda mesajı kanaldan temizler')
+            .addIntegerOption(o => o.setName('miktar').setDescription('Silinecek mesaj sayısı').setRequired(true).setMinValue(1).setMaxValue(100))
+            .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageMessages),
+        new SlashCommandBuilder()
             .setName('yardım')
             .setDescription('Botun komut listesini gösterir.'),
         new SlashCommandBuilder()
@@ -255,11 +260,11 @@ client.on('interactionCreate', async interaction => {
             const helpEmbed = createEmbed('📑 Komut Listesi', 'Aşağıda botun kullanılabilir komutları listelenmiştir.', 0x5865F2)
                 .addFields(
                     { name: '🛠️ Genel Komutlar', value: '`/yardım` - Komut listesini gösterir.\n`/öneri` - Sunucu için öneri gönderir.' },
-                    { name: '🛡️ Yönetici Komutları', value: '`/ses-panel` - Özel oda sistemini kurar.\n`/bilet olustur` - Bilet sistemini kurar.\n`/link-engel` - Link korumasını açar/kapatır.\n`/kick` - Kullanıcı atar.\n`/ban` - Kullanıcı yasaklar.\n`/mute` - Kullanıcı susturur.\n`/unmute` - Susturmayı kaldırır.' },
+                    { name: '🛡️ Yönetici Komutları', value: '`/ses-panel` - Özel oda sistemini kurar.\n`/bilet olustur` - Bilet sistemini kurar.\n`/link-engel` - Link korumasını açar/kapatır.\n`/kick` - Kullanıcı atar.\n`/ban` - Kullanıcı yasaklar.\n`/mute` - Kullanıcı susturur.\n`/unmute` - Susturmayı kaldırır.\n`/sil` - Mesajları temizler.' },
                     { name: '🔊 Ses Sistemi', value: 'Özel oda kurmak için **Oda Oluştur** kanalına girmeniz yeterlidir.' },
                     { name: '🎫 Bilet Sistemi', value: '**bilet-oluştur** kanalındaki menüden destek bileti açabilirsiniz.' }
                 );
-            return interaction.reply({ embeds: [helpEmbed] });
+            return interaction.reply({ embeds: [helpEmbed], ephemeral: true });
         }
 
         if (commandName === 'ses-panel') {
@@ -269,6 +274,21 @@ client.on('interactionCreate', async interaction => {
             await interaction.editReply({
                 embeds: [createEmbed('Kurulum Başarılı', `Sistem aktif edilmiştir. <#${voiceChannel.id}> kanalı kullanıma hazırdır.`, 0x2ECC71)]
             });
+        }
+
+        if (commandName === 'sil') {
+            if (!interaction.member.permissions.has(PermissionsBitField.Flags.ManageMessages)) {
+                return interaction.reply({ embeds: [createErrorEmbed('Mesajlar silinemedi, sunucuda Mesajları Yönet yetkisine sahip olmalısınız.')], ephemeral: true });
+            }
+
+            const miktar = options.getInteger('miktar');
+            try {
+                const silinenler = await interaction.channel.bulkDelete(miktar, true);
+                await interaction.reply({ embeds: [createEmbed('Temizlik Başarılı', `Kanalda **${silinenler.size}** adet mesaj silindi.`, 0x2ECC71)], ephemeral: true });
+                await sendLog(guild, '🧹 Mesajlar Silindi', `**Yetkili:** ${member.user.tag}\n**Kanal:** <#${interaction.channel.id}>\n**Miktar:** ${silinenler.size} mesaj`, 0x3498DB);
+            } catch (error) {
+                await interaction.reply({ embeds: [createErrorEmbed('Mesajlar silinemedi.')], ephemeral: true });
+            }
         }
 
         if (commandName === 'link-engel') {
@@ -371,7 +391,7 @@ client.on('interactionCreate', async interaction => {
             }
         }
 
-        if (commandName === 'kick') {
+       if (commandName === 'kick') {
             const target = options.getUser('kullanici');
             const reason = options.getString('sebep') || 'Belirtilmedi';
             const targetMember = await guild.members.fetch(target.id).catch(() => null);
@@ -379,10 +399,10 @@ client.on('interactionCreate', async interaction => {
             if (target.id === member.id) return interaction.reply({ embeds: [createErrorEmbed('Kendi üzerinizde uzaklaştırma işlemi uygulayamazsınız.')], ephemeral: true });
             if (targetMember.kickable) {
                 await targetMember.kick(reason);
-                interaction.reply({ embeds: [createEmbed('Uzaklaştırma (Kick)', `**${target.tag}** sunucudan uzaklaştırılmıştır.\n**Gerekçe:** ${reason}`, 0xE67E22)] });
+                interaction.reply({ embeds: [createEmbed('Uzaklaştırma (Kick)', `**${target.tag}** sunucudan uzaklaştırılmıştır.\n**Gerekçe:** ${reason}`, 0xE67E22)], ephemeral: true });
                 await sendLog(guild, '🚪 Kullanıcı Atıldı', `**Yetkili:** ${member.user.tag}\n**Atılan:** ${target.tag}\n**Sebep:** ${reason}`, 0xE67E22);
             } else {
-                interaction.reply({ embeds: [createErrorEmbed('**Yetki Yetersizliği:** Bu kullanıcının rolü benim rolümden daha yüksek veya eşit olduğu için işlem yapılamıyor.')], ephemeral: true });
+                interaction.reply({ embeds: [createErrorEmbed('**İşlem Başarısız:** Bu kullanıcının rolü benim rolümden daha yüksek veya eşit olduğu için işlem yapılamıyor.')], ephemeral: true });
             }
         }
 
@@ -392,14 +412,14 @@ client.on('interactionCreate', async interaction => {
             if (target.id === member.id) return interaction.reply({ embeds: [createErrorEmbed('Kendinizi yasaklayamazsınız.')], ephemeral: true });
             try {
                 await guild.members.ban(target, { reason: reason });
-                interaction.reply({ embeds: [createEmbed('Yasaklama (Ban)', `**${target.tag}** sunucudan kalıcı olarak yasaklanmıştır.\n**Gerekçe:** ${reason}`, 0xC0392B)] });
+                interaction.reply({ embeds: [createEmbed('Yasaklama (Ban)', `**${target.tag}** sunucudan kalıcı olarak yasaklanmıştır.\n**Gerekçe:** ${reason}`, 0xC0392B)], ephemeral: true });
                 await sendLog(guild, '🔨 Kullanıcı Yasaklandı', `**Yetkili:** ${member.user.tag}\n**Yasaklanan:** ${target.tag}\n**Sebep:** ${reason}`, 0xC0392B);
             } catch (e) {
                 interaction.reply({ embeds: [createErrorEmbed('**İşlem Başarısız:** Kullanıcıyı yasaklamak için yeterli yetkiye sahip değilim.')], ephemeral: true });
             }
         }
 
-        if (commandName === 'mute') {
+      if (commandName === 'mute') {
             const target = options.getUser('kullanici');
             const duration = options.getInteger('sure');
             const reason = options.getString('sebep') || 'Belirtilmedi';
@@ -408,7 +428,7 @@ client.on('interactionCreate', async interaction => {
             if (target.id === member.id) return interaction.reply({ embeds: [createErrorEmbed('Kendinize susturma işlemi uygulayamazsınız.')], ephemeral: true });
             if (targetMember.moderatable) {
                 await targetMember.timeout(duration * 60000, reason);
-                interaction.reply({ embeds: [createEmbed('Süreli Susturma (Timeout)', `**${target.tag}** kullanıcısına **${duration} dakika** boyunca susturulma uygulanmıştır.`, 0xF1C40F)] });
+                interaction.reply({ embeds: [createEmbed('Süreli Susturma (Timeout)', `**${target.tag}** kullanıcısına **${duration} dakika** boyunca susturulma uygulanmıştır.`, 0xF1C40F)], ephemeral: true });
                 await sendLog(guild, '😶 Kullanıcı Susturuldu', `**Yetkili:** ${member.user.tag}\n**Susturulan:** ${target.tag}\n**Süre:** ${duration} Dakika\n**Sebep:** ${reason}`, 0xF1C40F);
             } else {
                 interaction.reply({ embeds: [createErrorEmbed('**Hata:** Bu kullanıcı Yönetici yetkisine sahip veya rolü benden yüksek.')], ephemeral: true });
@@ -800,7 +820,7 @@ client.on('interactionCreate', async interaction => {
             }
         }
 
-        if (interaction.customId === 'modal_suggestion') {
+if (interaction.customId === 'modal_suggestion') {
             const text = interaction.fields.getTextInputValue('suggestion_text');
             const suggestionChannel = interaction.guild.channels.cache.get(SUGGESTION_CHANNEL_ID);
             if (suggestionChannel) {
@@ -814,6 +834,37 @@ client.on('interactionCreate', async interaction => {
             }
         }
     }
+});
+
+client.on('messageDelete', async message => {
+    if (!message.guild || !message.author || message.author.bot) return;
+
+    const logChannel = message.guild.channels.cache.get(LOG_CHANNEL_ID);
+    if (!logChannel) return;
+
+    const deleteEmbed = createEmbed(
+        '🗑️ Mesaj Silindi',
+        `**Kullanıcı:** <@${message.author.id}> (${message.author.tag})\n**Kanal:** <#${message.channel.id}>\n\n**Silinen İçerik:**\n${message.content || '*İçerik bulunamadı veya medya silindi.*'}`,
+        0xE74C3C
+    );
+
+    await logChannel.send({ embeds: [deleteEmbed] });
+});
+
+client.on('messageUpdate', async (oldMessage, newMessage) => {
+    if (!oldMessage.guild || !oldMessage.author || oldMessage.author.bot) return;
+    if (oldMessage.content === newMessage.content) return;
+
+    const logChannel = oldMessage.guild.channels.cache.get(LOG_CHANNEL_ID);
+    if (!logChannel) return;
+
+    const updateEmbed = createEmbed(
+        '✏️ Mesaj Düzenlendi',
+        `**Kullanıcı:** <@${oldMessage.author.id}> (${oldMessage.author.tag})\n**Kanal:** <#${oldMessage.channel.id}> - [Mesaja Git](${newMessage.url})\n\n**Eski İçerik:**\n${oldMessage.content || '*Yok*'}\n\n**Yeni İçerik:**\n${newMessage.content || '*Yok*'}`,
+        0xF1C40F
+    );
+
+    await logChannel.send({ embeds: [updateEmbed] });
 });
 
 async function getGeneratorChannelId(guild) {
