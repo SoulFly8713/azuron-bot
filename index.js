@@ -52,7 +52,7 @@ function createErrorEmbed(description) {
         .setDescription(description)
         .setColor(0xE74C3C)
         .setTimestamp()
-        .setFooter({ text: 'Yetki veya Sistem Hatası', iconURL: client.user.displayAvatarURL() });
+        .setFooter({ text: 'Hata', iconURL: client.user.displayAvatarURL() });
 }
 
 async function sendLog(guild, title, description, color = 0xE67E22) {
@@ -279,9 +279,10 @@ client.on('interactionCreate', async interaction => {
             await interaction.deferReply();
             const prompt = options.getString('aciklama');
             const encodedPrompt = encodeURIComponent(prompt);
-            const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&nologo=true`;
+            const apiUrl = process.env.IMAGE_API_URL || 'https://image.pollinations.ai/prompt/';
+            const imageUrl = `${apiUrl}${encodedPrompt}?width=1024&height=1024&nologo=true`;
 
-            const embed = createEmbed('🎨 Yapay Zeka Görseli', `**İstek:** ${prompt}`, 0x9B59B6)
+            const embed = createEmbed('🎨 Üretilen İçerik', `**İstek:** ${prompt}`, 0x9B59B6)
                 .setImage(imageUrl);
 
             return interaction.editReply({ embeds: [embed] });
