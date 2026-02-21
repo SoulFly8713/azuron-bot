@@ -2,7 +2,7 @@ const {
     Client, GatewayIntentBits, Partials, PermissionsBitField, EmbedBuilder,
     ActionRowBuilder, StringSelectMenuBuilder, StringSelectMenuOptionBuilder,
     ButtonBuilder, ButtonStyle, ChannelType, ModalBuilder, TextInputBuilder,
-    TextInputStyle, REST, Routes, SlashCommandBuilder, ActivityType
+    TextInputStyle, REST, Routes, SlashCommandBuilder, ActivityType, AttachmentBuilder
 } = require('discord.js');
 const { joinVoiceChannel, getVoiceConnection } = require('@discordjs/voice');
 
@@ -278,14 +278,32 @@ client.on('interactionCreate', async interaction => {
         if (commandName === 'görsel') {
             await interaction.deferReply();
             const prompt = options.getString('aciklama');
-            const encodedPrompt = encodeURIComponent(prompt);
-            const apiUrl = process.env.IMAGE_API_URL || 'https://image.pollinations.ai/prompt/';
-            const imageUrl = `${apiUrl}${encodedPrompt}?width=1024&height=1024&nologo=true`;
 
-            const embed = createEmbed('🎨 Üretilen İçerik', `**İstek:** ${prompt}`, 0x9B59B6)
-                .setImage(imageUrl);
+            try {
+                const response = await fetch("https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0", {
+                    headers: {
+                        Authorization: `Bearer ${process.env.HF_API_KEY}`,
+                        "Content-Type": "application/json",
+                    },
+                    method: "POST",
+                    body: JSON.stringify({ inputs: prompt }),
+                });
 
-            return interaction.editReply({ embeds: [embed] });
+                if (!response.ok) {
+                    return interaction.editReply({ embeds: [createErrorEmbed('Görsel oluşturulamadı. API yanıt vermedi veya model şu anda yükleniyor olabilir. Lütfen 1-2 dakika sonra tekrar deneyin.')] });
+                }
+
+                const arrayBuffer = await response.arrayBuffer();
+                const buffer = Buffer.from(arrayBuffer);
+                const attachment = new AttachmentBuilder(buffer, { name: 'gorsel.png' });
+
+                const embed = createEmbed('🎨 Yapay Zeka Görseli', `**İstek:** ${prompt}`, 0x9B59B6)
+                    .setImage('attachment://gorsel.png');
+
+                return interaction.editReply({ embeds: [embed], files: [attachment] });
+            } catch (error) {
+                return interaction.editReply({ embeds: [createErrorEmbed('Görsel oluşturulurken sistemsel bir hata meydana geldi.')] });
+            }
         }
 
         if (commandName === 'yardım') {
