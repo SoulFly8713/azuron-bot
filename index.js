@@ -17,6 +17,10 @@ app.listen(process.env.PORT || 3000, () => {
     console.log("Web server aktif.");
 });
 
+process.on('unhandledRejection', error => {
+    console.error('Sistem Hatası Yakalandı (Çökme Engellendi):', error.message);
+});
+
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -276,7 +280,12 @@ client.on('interactionCreate', async interaction => {
         const { commandName, options, member, guild } = interaction;
 
         if (commandName === 'görsel') {
-            await interaction.deferReply();
+            try {
+                await interaction.deferReply();
+            } catch (error) {
+                return;
+            }
+
             const prompt = options.getString('aciklama');
 
             try {
@@ -290,7 +299,7 @@ client.on('interactionCreate', async interaction => {
                 });
 
                 if (!response.ok) {
-                    return interaction.editReply({ embeds: [createErrorEmbed('Görsel oluşturulamadı. API yanıt vermedi veya model şu anda yükleniyor olabilir. Lütfen 1-2 dakika sonra tekrar deneyin.')] });
+                    return interaction.editReply({ embeds: [createErrorEmbed('Görsel oluşturulamadı. Lütfen 1 dakika sonra tekrar deneyin.')] }).catch(() => {});
                 }
 
                 const arrayBuffer = await response.arrayBuffer();
@@ -300,9 +309,9 @@ client.on('interactionCreate', async interaction => {
                 const embed = createEmbed('🎨 Yapay Zeka Görseli', `**İstek:** ${prompt}`, 0x9B59B6)
                     .setImage('attachment://gorsel.png');
 
-                return interaction.editReply({ embeds: [embed], files: [attachment] });
+                return interaction.editReply({ embeds: [embed], files: [attachment] }).catch(() => {});
             } catch (error) {
-                return interaction.editReply({ embeds: [createErrorEmbed('Görsel oluşturulurken sistemsel bir hata meydana geldi.')] });
+                return interaction.editReply({ embeds: [createErrorEmbed('Sistemsel bir hata meydana geldi.')] }).catch(() => {});
             }
         }
 
