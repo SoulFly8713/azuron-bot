@@ -872,17 +872,26 @@ client.on('messageDelete', async message => {
     }
 
     const files = [];
+    let imageUrl = null;
+
     if (message.attachments.size > 0) {
         message.attachments.forEach(attachment => {
-            files.push({ attachment: attachment.url, name: attachment.name });
+            if (attachment.contentType && attachment.contentType.startsWith('image/') && !imageUrl) {
+                imageUrl = attachment.proxyURL;
+            } else {
+                files.push({ attachment: attachment.proxyURL, name: attachment.name });
+            }
         });
     }
 
-    if (!message.content && files.length === 0) {
+    if (!message.content && files.length === 0 && !imageUrl) {
         description += `\n*İçerik bulunamadı veya sadece sistem mesajı/embed.*`;
     }
 
     const deleteEmbed = createEmbed('🗑️ Mesaj Silindi', description, 0xE74C3C);
+    if (imageUrl) {
+        deleteEmbed.setImage(imageUrl);
+    }
 
     await logChannel.send({ embeds: [deleteEmbed], files: files }).catch(() => {});
 });
