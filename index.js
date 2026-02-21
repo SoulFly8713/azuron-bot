@@ -4,17 +4,17 @@ const {
     ButtonBuilder, ButtonStyle, ChannelType, ModalBuilder, TextInputBuilder,
     TextInputStyle, REST, Routes, SlashCommandBuilder, ActivityType
 } = require('discord.js');
-const { joinVoiceChannel } = require('@discordjs/voice');
+const { joinVoiceChannel, getVoiceConnection } = require('@discordjs/voice');
 
 const express = require("express");
 const app = express();
 
 app.get("/", (req, res) => {
-  res.send("Bot aktif 🚀");
+    res.send("Bot aktif 🚀");
 });
 
 app.listen(process.env.PORT || 3000, () => {
-  console.log("Web server aktif.");
+    console.log("Web server aktif.");
 });
 
 const client = new Client({
@@ -81,12 +81,31 @@ client.on('clientReady', async () => {
         console.log(`Bot ${voiceChannel.name} kanalına bağlandı.`);
     }
 
+    setInterval(() => {
+        const checkVoiceChannel = client.channels.cache.get(BOT_VOICE_CHANNEL_ID);
+        if (checkVoiceChannel) {
+            const connection = getVoiceConnection(checkVoiceChannel.guild.id);
+            if (!connection) {
+                joinVoiceChannel({
+                    channelId: checkVoiceChannel.id,
+                    guildId: checkVoiceChannel.guild.id,
+                    adapterCreator: checkVoiceChannel.guild.voiceAdapterCreator,
+                    selfDeaf: true
+                });
+            }
+        }
+    }, 60000);
+
     const commands = [
         new SlashCommandBuilder()
             .setName('ses-panel')
             .setDescription('Ses yönetim panelini aktif eder (Yönetici)')
             .setDMPermission(false)
             .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator),
+        new SlashCommandBuilder()
+            .setName('görsel')
+            .setDescription('Yapay zeka ile metinden görsel oluşturur.')
+            .addStringOption(o => o.setName('aciklama').setDescription('Oluşturulacak görseli İngilizce tarif edin.').setRequired(true)),
         new SlashCommandBuilder()
             .setName('sil')
             .setDescription('Belirtilen miktarda mesajı kanaldan temizler')
@@ -256,10 +275,22 @@ client.on('interactionCreate', async interaction => {
     if (interaction.isChatInputCommand()) {
         const { commandName, options, member, guild } = interaction;
 
+        if (commandName === 'görsel') {
+            await interaction.deferReply();
+            const prompt = options.getString('aciklama');
+            const encodedPrompt = encodeURIComponent(prompt);
+            const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&nologo=true`;
+
+            const embed = createEmbed('🎨 Yapay Zeka Görseli', `**İstek:** ${prompt}`, 0x9B59B6)
+                .setImage(imageUrl);
+
+            return interaction.editReply({ embeds: [embed] });
+        }
+
         if (commandName === 'yardım') {
             const helpEmbed = createEmbed('📑 Komut Listesi', 'Aşağıda botun kullanılabilir komutları listelenmiştir.', 0x5865F2)
                 .addFields(
-                    { name: '🛠️ Genel Komutlar', value: '`/yardım` - Komut listesini gösterir.\n`/öneri` - Sunucu için öneri gönderir.' },
+                    { name: '🛠️ Genel Komutlar', value: '`/yardım` - Komut listesini gösterir.\n`/öneri` - Sunucu için öneri gönderir.\n`/görsel` - Metinden görsel üretir.' },
                     { name: '🛡️ Yönetici Komutları', value: '`/ses-panel` - Özel oda sistemini kurar.\n`/bilet olustur` - Bilet sistemini kurar.\n`/link-engel` - Link korumasını açar/kapatır.\n`/kick` - Kullanıcı atar.\n`/ban` - Kullanıcı yasaklar.\n`/mute` - Kullanıcı susturur.\n`/unmute` - Susturmayı kaldırır.\n`/sil` - Mesajları temizler.' },
                     { name: '🔊 Ses Sistemi', value: 'Özel oda kurmak için **Oda Oluştur** kanalına girmeniz yeterlidir.' },
                     { name: '🎫 Bilet Sistemi', value: '**bilet-oluştur** kanalındaki menüden destek bileti açabilirsiniz.' }
@@ -837,38 +868,31 @@ if (interaction.customId === 'modal_suggestion') {
 });
 
 client.on('messageDelete', async message => {
-    if (!message.guild || !message.author || message.author.bot) return;
+    if (!message.guild || !message.author || message.author.bot) return;
 
-    const logChannel = message.guild.channels.cache.get(LOG_CHANNEL_ID);
-    if (!logChannel) return;
+    const logChannel = message.guild.channels.cache.get(LOG_CHANNEL_ID);
+    if (!logChannel) return;
 
-    let description = `**Kullanıcı:** <@${message.author.id}> (${message.author.tag})\n**Kanal:** <#${message.channel.id}>\n`;
+    let description = `**Kullanıcı:** <@${message.author.id}> (${message.author.tag})\n**Kanal:** <#${message.channel.id}>\n`;
 
-    if (message.content) {
-        description += `\n**Silinen İçerik:**\n${message.content}`;
-    }
+    if (message.content) {
+        description += `\n**Silinen İçerik:**\n${message.content}`;
+    }
 
-    let imageUrl = null;
-    if (message.attachments.size > 0) {
-        description += `\n\n**Silinen Medya/Ekler:**\n${message.attachments.map(a => `[Dosya Bağlantısı](${a.proxyURL})`).join('\n')}`;
-        
-        const firstAttachment = message.attachments.first();
-        if (firstAttachment.contentType && firstAttachment.contentType.startsWith('image/')) {
-            imageUrl = firstAttachment.proxyURL; 
-        }
-    }
+    const files = [];
+    if (message.attachments.size > 0) {
+        message.attachments.forEach(attachment => {
+            files.push({ attachment: attachment.url, name: attachment.name });
+        });
+    }
 
-    if (!message.content && message.attachments.size === 0) {
-        description += `\n*İçerik bulunamadı veya sadece sistem mesajı/embed.*`;
-    }
+    if (!message.content && files.length === 0) {
+        description += `\n*İçerik bulunamadı veya sadece sistem mesajı/embed.*`;
+    }
 
-    const deleteEmbed = createEmbed('🗑️ Mesaj Silindi', description, 0xE74C3C);
-    
-    if (imageUrl) {
-        deleteEmbed.setImage(imageUrl);
-    }
+    const deleteEmbed = createEmbed('🗑️ Mesaj Silindi', description, 0xE74C3C);
 
-    await logChannel.send({ embeds: [deleteEmbed] }).catch(() => {});
+    await logChannel.send({ embeds: [deleteEmbed], files: files }).catch(() => {});
 });
 
 client.on('messageUpdate', async (oldMessage, newMessage) => {
