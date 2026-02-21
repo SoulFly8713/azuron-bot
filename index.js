@@ -2,7 +2,7 @@ const {
     Client, GatewayIntentBits, Partials, PermissionsBitField, EmbedBuilder,
     ActionRowBuilder, StringSelectMenuBuilder, StringSelectMenuOptionBuilder,
     ButtonBuilder, ButtonStyle, ChannelType, ModalBuilder, TextInputBuilder,
-    TextInputStyle, REST, Routes, SlashCommandBuilder, ActivityType, AttachmentBuilder
+    TextInputStyle, REST, Routes, SlashCommandBuilder, ActivityType
 } = require('discord.js');
 const { joinVoiceChannel, getVoiceConnection } = require('@discordjs/voice');
 
@@ -18,7 +18,7 @@ app.listen(process.env.PORT || 3000, () => {
 });
 
 process.on('unhandledRejection', error => {
-    console.error('Sistem Hatası Yakalandı (Çökme Engellendi):', error.message);
+    console.error('Hata:', error.message);
 });
 
 const client = new Client({
@@ -30,6 +30,10 @@ const client = new Client({
         GatewayIntentBits.GuildVoiceStates
     ],
     partials: [Partials.Channel]
+});
+
+client.on('error', error => {
+    console.error('Discord API Hatası:', error.message);
 });
 
 const LOG_CHANNEL_ID = '1470356769653133368';
@@ -62,7 +66,7 @@ function createErrorEmbed(description) {
 async function sendLog(guild, title, description, color = 0xE67E22) {
     const channel = guild.channels.cache.get(LOG_CHANNEL_ID);
     if (channel) {
-        await channel.send({ embeds: [createEmbed(title, description, color)] });
+        await channel.send({ embeds: [createEmbed(title, description, color)] }).catch(() => {});
     }
 }
 
@@ -106,10 +110,6 @@ client.on('clientReady', async () => {
             .setDescription('Ses yönetim panelini aktif eder (Yönetici)')
             .setDMPermission(false)
             .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator),
-        new SlashCommandBuilder()
-            .setName('görsel')
-            .setDescription('Yapay zeka ile metinden görsel oluşturur.')
-            .addStringOption(o => o.setName('aciklama').setDescription('Oluşturulacak görseli İngilizce tarif edin.').setRequired(true)),
         new SlashCommandBuilder()
             .setName('sil')
             .setDescription('Belirtilen miktarda mesajı kanaldan temizler')
@@ -279,46 +279,10 @@ client.on('interactionCreate', async interaction => {
     if (interaction.isChatInputCommand()) {
         const { commandName, options, member, guild } = interaction;
 
-        if (commandName === 'görsel') {
-            try {
-                await interaction.deferReply();
-            } catch (error) {
-                return;
-            }
-
-            const prompt = options.getString('aciklama');
-
-            try {
-                const response = await fetch("https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0", {
-                    headers: {
-                        Authorization: `Bearer ${process.env.HF_API_KEY}`,
-                        "Content-Type": "application/json",
-                    },
-                    method: "POST",
-                    body: JSON.stringify({ inputs: prompt }),
-                });
-
-                if (!response.ok) {
-                    return interaction.editReply({ embeds: [createErrorEmbed('Görsel oluşturulamadı. Lütfen 1 dakika sonra tekrar deneyin.')] }).catch(() => {});
-                }
-
-                const arrayBuffer = await response.arrayBuffer();
-                const buffer = Buffer.from(arrayBuffer);
-                const attachment = new AttachmentBuilder(buffer, { name: 'gorsel.png' });
-
-                const embed = createEmbed('🎨 Yapay Zeka Görseli', `**İstek:** ${prompt}`, 0x9B59B6)
-                    .setImage('attachment://gorsel.png');
-
-                return interaction.editReply({ embeds: [embed], files: [attachment] }).catch(() => {});
-            } catch (error) {
-                return interaction.editReply({ embeds: [createErrorEmbed('Sistemsel bir hata meydana geldi.')] }).catch(() => {});
-            }
-        }
-
         if (commandName === 'yardım') {
             const helpEmbed = createEmbed('📑 Komut Listesi', 'Aşağıda botun kullanılabilir komutları listelenmiştir.', 0x5865F2)
                 .addFields(
-                    { name: '🛠️ Genel Komutlar', value: '`/yardım` - Komut listesini gösterir.\n`/öneri` - Sunucu için öneri gönderir.\n`/görsel` - Metinden görsel üretir.' },
+                    { name: '🛠️ Genel Komutlar', value: '`/yardım` - Komut listesini gösterir.\n`/öneri` - Sunucu için öneri gönderir.' },
                     { name: '🛡️ Yönetici Komutları', value: '`/ses-panel` - Özel oda sistemini kurar.\n`/bilet olustur` - Bilet sistemini kurar.\n`/link-engel` - Link korumasını açar/kapatır.\n`/kick` - Kullanıcı atar.\n`/ban` - Kullanıcı yasaklar.\n`/mute` - Kullanıcı susturur.\n`/unmute` - Susturmayı kaldırır.\n`/sil` - Mesajları temizler.' },
                     { name: '🔊 Ses Sistemi', value: 'Özel oda kurmak için **Oda Oluştur** kanalına girmeniz yeterlidir.' },
                     { name: '🎫 Bilet Sistemi', value: '**bilet-oluştur** kanalındaki menüden destek bileti açabilirsiniz.' }
