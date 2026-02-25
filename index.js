@@ -313,6 +313,34 @@ client.on('interactionCreate', async interaction => {
     if (interaction.isChatInputCommand()) {
         const { commandName, options, member, guild } = interaction;
 
+        if (commandName === 'rol') {
+            const sub = options.getSubcommand();
+            if (sub === 'ayarla') {
+                const targetRole = options.getRole('rol');
+                const guildId = guild.id;
+
+                if (targetRole.position >= guild.members.me.roles.highest.position) {
+                    return interaction.reply({ 
+                        embeds: [createErrorEmbed(`**İşlem Başarısız:** ${targetRole} rolü benim rollerimden daha üstte veya aynı sırada. Lütfen sunucu ayarlarından benim rolümü daha yukarı taşıyın.`)], 
+                        flags: MessageFlags.Ephemeral 
+                    });
+                }
+
+                if (autoRoles.get(guildId) === targetRole.id) {
+                    autoRoles.delete(guildId);
+                    return interaction.reply({ 
+                        embeds: [createEmbed('Otomatik Rol Kapatıldı', `Otomatik rol sistemi devre dışı bırakıldı. Artık yeni üyelere ${targetRole} rolü **verilmeyecek**.`, 0xE74C3C)] 
+                    });
+                } 
+                else {
+                    autoRoles.set(guildId, targetRole.id);
+                    return interaction.reply({ 
+                        embeds: [createEmbed('Otomatik Rol Ayarlandı', `Otomatik rol başarıyla ${targetRole} olarak ayarlandı. Sunucuya yeni katılanlara bu rol verilecek.`, 0x2ECC71)] 
+                    });
+                }
+            }
+        }
+
         if (commandName === 'mod-form') {
             const durationHours = options.getInteger('sure');
             const durationMs = durationHours * 3600000;
@@ -360,7 +388,7 @@ client.on('interactionCreate', async interaction => {
             const helpEmbed = createEmbed('📑 Komut Listesi', 'Aşağıda botun kullanılabilir komutları listelenmiştir.', 0x5865F2)
                 .addFields(
                     { name: '🛠️ Genel Komutlar', value: '`/yardım` - Komut listesini gösterir.\n`/öneri` - Sunucu için öneri gönderir.' },
-                    { name: '🛡️ Yönetici Komutları', value: '`/mod-form` - Başvuru formunu gönderir.\n`/ses-panel` - Özel oda sistemini kurar.\n`/bilet olustur` - Bilet sistemini kurar.\n`/link-engel` - Link korumasını açar/kapatır.\n`/kick` - Kullanıcı atar.\n`/ban` - Kullanıcı yasaklar.\n`/mute` - Kullanıcı susturur.\n`/unmute` - Susturmayı kaldırır.\n`/sil` - Mesajları temizler.' },
+                    { name: '🛡️ Yönetici Komutları', value: '`/mod-form` - Başvuru formunu gönderir.\n`/ses-panel` - Özel oda sistemini kurar.\n`/bilet olustur` - Bilet sistemini kurar.\n`/link-engel` - Link korumasını açar/kapatır.\n`/kick` - Kullanıcı atar.\n`/ban` - Kullanıcı yasaklar.\n`/mute` - Kullanıcı susturur.\n`/unmute` - Susturmayı kaldırır.\n`/sil` - Mesajları temizler.\n`/rol ayarla` - Yeni üyelere verilecek rolü ayarlar.' },
                     { name: '🔊 Ses Sistemi', value: 'Özel oda kurmak için **Oda Oluştur** kanalına girmeniz yeterlidir.' },
                     { name: '🎫 Bilet Sistemi', value: '**bilet-oluştur** kanalındaki menüden destek bileti açabilirsiniz.' }
                 );
@@ -426,35 +454,6 @@ client.on('interactionCreate', async interaction => {
                         embeds: [createErrorEmbed('Bilet sistemi zaten kurulu. Lütfen mevcut **🎫 Bilet Sistemi** kategorisini kontrol edin.')]
                     });
                 }
-
-                if (commandName === 'rol') {
-            const sub = options.getSubcommand();
-            if (sub === 'ayarla') {
-                const targetRole = options.getRole('rol');
-                const guildId = guild.id;
-
-                if (targetRole.position >= guild.members.me.roles.highest.position) {
-                    return interaction.reply({ 
-                        embeds: [createErrorEmbed(`**İşlem Başarısız:** ${targetRole} rolü benim rollerimden daha üstte veya aynı sırada. Lütfen sunucu ayarlarından benim rolümü daha yukarı taşıyın.`)], 
-                        flags: MessageFlags.Ephemeral 
-                    });
-                }
-
-                if (autoRoles.get(guildId) === targetRole.id) {
-                    autoRoles.delete(guildId);
-                    return interaction.reply({ 
-                        embeds: [createEmbed('Otomatik Rol Kapatıldı', `Otomatik rol sistemi devre dışı bırakıldı. Artık yeni üyelere ${targetRole} rolü **verilmeyecek**.`, 0xE74C3C)] 
-                    });
-                } 
-                // Ayarlı değilse veya farklı bir rol seçildiyse -> Sistemi Aç/Güncelle
-                else {
-                    autoRoles.set(guildId, targetRole.id);
-                    return interaction.reply({ 
-                        embeds: [createEmbed('Otomatik Rol Ayarlandı', `Otomatik rol başarıyla ${targetRole} olarak ayarlandı. Sunucuya yeni katılanlara bu rol verilecek.`, 0x2ECC71)] 
-                    });
-                }
-            }
-        }
 
                 const ticketCategory = await guild.channels.create({
                     name: '🎫 Bilet Sistemi',
@@ -719,7 +718,6 @@ client.on('interactionCreate', async interaction => {
 
     if (interaction.isButton()) {
         if (interaction.customId === 'btn_open_mod_form') {
-
             if (pendingApplications.has(interaction.user.id)) {
                 return interaction.reply({ 
                     embeds: [createErrorEmbed('Zaten yetkililer tarafından değerlendirilmeyi bekleyen bir başvurunuz bulunuyor. Lütfen sonucun açıklanmasını bekleyin.')], 
