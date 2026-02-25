@@ -48,6 +48,8 @@ const deleteTimers = new Map();
 const formCache = new Map();
 const pendingApplications = new Set();
 const autoRoles = new Map();
+const customRoleSetup = new Map();
+const userCustomRoles = new Map();
 
 function createEmbed(title, description, color = 0x5865F2) {
     return new EmbedBuilder()
@@ -109,6 +111,17 @@ client.on('clientReady', async () => {
     }, 60000);
 
     const commands = [
+        new SlashCommandBuilder()
+            .setName('özel')
+            .setDescription('Sunucu takviyecilerine özel komutlar.')
+            .addSubcommand(s => s
+                .setName('rol-ayarla')
+                .setDescription('Sadece sunucuya takviye yapanlar için özel rol oluşturur.')
+            )
+            .addSubcommand(s => s
+                .setName('rol-sil')
+                .setDescription('Oluşturduğunuz özel rolü siler.')
+            ),
         new SlashCommandBuilder()
             .setName('rol')
             .setDescription('Sunucu rol ayarlarını yönetir.')
@@ -210,6 +223,45 @@ client.on('guildMemberAdd', async member => {
 
 client.on('messageCreate', async message => {
     if (message.author.bot || !message.guild) return;
+    
+    if (customRoleSetup.has(message.author.id) && customRoleSetup.get(message.author.id).step === 'name') {
+        const setupData = customRoleSetup.get(message.author.id);
+        const roleName = message.content;
+        
+        const row1 = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('color_FF0000').setLabel('Kırmızı').setStyle(ButtonStyle.Danger),
+            new ButtonBuilder().setCustomId('color_00FF00').setLabel('Yeşil').setStyle(ButtonStyle.Success),
+            new ButtonBuilder().setCustomId('color_0000FF').setLabel('Mavi').setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId('color_FFFF00').setLabel('Sarı').setStyle(ButtonStyle.Secondary)
+        );
+        const row2 = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('color_800080').setLabel('Mor').setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId('color_FFA500').setLabel('Turuncu').setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder().setCustomId('color_00FFFF').setLabel('Cyan').setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder().setCustomId('color_FFC0CB').setLabel('Pembe').setStyle(ButtonStyle.Secondary)
+        );
+        const row3 = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('color_FFFFFF').setLabel('Beyaz').setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder().setCustomId('color_000000').setLabel('Siyah').setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder().setCustomId('color_808080').setLabel('Gri').setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder().setCustomId('color_A52A2A').setLabel('Kahverengi').setStyle(ButtonStyle.Secondary)
+        );
+        const row4 = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('color_FFD700').setLabel('Altın').setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder().setCustomId('color_C0C0C0').setLabel('Gümüş').setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder().setCustomId('color_008080').setLabel('Teal').setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder().setCustomId('color_4B0082').setLabel('Lacivert').setStyle(ButtonStyle.Secondary)
+        );
+
+        const colorEmbed = createEmbed('Özel Rol Kurulumu (Adım 2/2)', `Harika! Rol adını **${roleName}** olarak belirlediniz. Lütfen aşağıdaki butonlardan rolünüzün rengini seçin.`, 0x5865F2);
+        
+        message.delete().catch(() => {});
+        setupData.originalInteraction.editReply({ embeds: [colorEmbed], components: [row1, row2, row3, row4] });
+        
+        customRoleSetup.set(message.author.id, { ...setupData, step: 'color', name: roleName });
+        return;
+    }
+    
     const lowerContent = message.content.toLowerCase();
     if (lowerContent === 'sa' || lowerContent === 'selamünaleyküm') {
         return message.reply('Aleykümselam, hoş geldin!');
@@ -313,6 +365,61 @@ client.on('interactionCreate', async interaction => {
     if (interaction.isChatInputCommand()) {
         const { commandName, options, member, guild } = interaction;
 
+        if (commandName === 'özel') {
+            const sub = options.getSubcommand();
+            if (!member.premiumSince && !member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+                return interaction.reply({ embeds: [createErrorEmbed('Bu komutu kullanabilmek için sunucuya takviye (boost) yapmanız gerekmektedir.')], flags: MessageFlags.Ephemeral });
+            }
+
+            if (sub === 'rol-ayarla') {
+                if (userCustomRoles.has(member.id)) {
+                    const existingRoleId = userCustomRoles.get(member.id);
+                    const existingRole = guild.roles.cache.get(existingRoleId);
+                    if (existingRole) {
+                        return interaction.reply({ embeds: [createErrorEmbed('Zaten özel bir rolünüz bulunuyor. Yeni bir tane oluşturmak için önce mevcut rolünüzü `/özel rol-sil` komutuyla silmelisiniz.')], flags: MessageFlags.Ephemeral });
+                    } else {
+                        userCustomRoles.delete(member.id);
+                    }
+                }
+
+                await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+                const setupEmbed = createEmbed('Özel Rol Kurulumu (Adım 1/2)', 'Lütfen oluşturmak istediğiniz özel rolün adını bu kanala yazın. (Bu mesaj sadece sizin tarafınızdan görülmektedir)', 0x5865F2);
+                await interaction.editReply({ embeds: [setupEmbed] });
+
+                customRoleSetup.set(member.id, { step: 'name', originalInteraction: interaction });
+
+                setTimeout(() => {
+                    if (customRoleSetup.has(member.id)) {
+                        customRoleSetup.delete(member.id);
+                        interaction.editReply({ embeds: [createErrorEmbed('Belirtilen süre içerisinde yanıt vermediğiniz için kurulum iptal edildi.')], components: [] }).catch(() => {});
+                    }
+                }, 60000);
+            }
+
+            if (sub === 'rol-sil') {
+                if (!userCustomRoles.has(member.id)) {
+                    return interaction.reply({ embeds: [createErrorEmbed('Size ait silinecek özel bir rol bulunamadı.')], flags: MessageFlags.Ephemeral });
+                }
+
+                const roleId = userCustomRoles.get(member.id);
+                const role = guild.roles.cache.get(roleId);
+
+                if (!role) {
+                    userCustomRoles.delete(member.id);
+                    return interaction.reply({ embeds: [createErrorEmbed('Rol sunucuda bulunamadı, hafızadan temizlendi.')], flags: MessageFlags.Ephemeral });
+                }
+
+                const confirmEmbed = createEmbed('Özel Rol Silme Onayı', `**${role.name}** isimli özel rolünüzü kalıcı olarak silmek istediğinize emin misiniz?`, 0xE74C3C);
+                
+                const confirmRow = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder().setCustomId(`confirm_delete_${roleId}`).setLabel('Evet, Sil').setStyle(ButtonStyle.Danger),
+                    new ButtonBuilder().setCustomId('cancel_delete').setLabel('İptal').setStyle(ButtonStyle.Secondary)
+                );
+
+                await interaction.reply({ embeds: [confirmEmbed], components: [confirmRow], flags: MessageFlags.Ephemeral });
+            }
+        }
+
         if (commandName === 'rol') {
             const sub = options.getSubcommand();
             if (sub === 'ayarla') {
@@ -389,6 +496,7 @@ client.on('interactionCreate', async interaction => {
                 .addFields(
                     { name: '🛠️ Genel Komutlar', value: '`/yardım` - Komut listesini gösterir.\n`/öneri` - Sunucu için öneri gönderir.' },
                     { name: '🛡️ Yönetici Komutları', value: '`/mod-form` - Başvuru formunu gönderir.\n`/ses-panel` - Özel oda sistemini kurar.\n`/bilet olustur` - Bilet sistemini kurar.\n`/link-engel` - Link korumasını açar/kapatır.\n`/kick` - Kullanıcı atar.\n`/ban` - Kullanıcı yasaklar.\n`/mute` - Kullanıcı susturur.\n`/unmute` - Susturmayı kaldırır.\n`/sil` - Mesajları temizler.\n`/rol ayarla` - Yeni üyelere verilecek rolü ayarlar.' },
+                    { name: '🚀 Takviyeci Komutları', value: '`/özel rol-ayarla` - Sadece size özel bir rol oluşturur.\n`/özel rol-sil` - Oluşturduğunuz özel rolü siler.' },
                     { name: '🔊 Ses Sistemi', value: 'Özel oda kurmak için **Oda Oluştur** kanalına girmeniz yeterlidir.' },
                     { name: '🎫 Bilet Sistemi', value: '**bilet-oluştur** kanalındaki menüden destek bileti açabilirsiniz.' }
                 );
@@ -577,146 +685,67 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
-    if (interaction.isStringSelectMenu()) {
-        if (interaction.customId === 'ticket_open_menu') {
-            const value = interaction.values[0];
-            const typeMap = {
-                open_support_ticket: '🎫 Destek',
-                open_report_ticket: '🚨 Şikayet',
-                open_suggestion_ticket: '💡 Öneri'
-            };
-            const selectedType = typeMap[value] || 'Genel';
+    if (interaction.isButton()) {
+        if (interaction.customId.startsWith('color_')) {
+            const userId = interaction.user.id;
+            if (!customRoleSetup.has(userId) || customRoleSetup.get(userId).step !== 'color') return;
 
-            const modal = new ModalBuilder()
-                .setCustomId(`modal_ticket_${value}`)
-                .setTitle(`${selectedType} Bileti Oluştur`);
-
-            const topicInput = new TextInputBuilder()
-                .setCustomId('ticket_topic')
-                .setLabel('Bilet Konusu')
-                .setStyle(TextInputStyle.Paragraph)
-                .setPlaceholder('Sorununuzu veya talebinizi kısaca açıklayın...')
-                .setMinLength(10)
-                .setMaxLength(500)
-                .setRequired(true);
-
-            modal.addComponents(new ActionRowBuilder().addComponents(topicInput));
-            await interaction.showModal(modal);
-            return;
-        }
-
-        if (interaction.customId === 'ticket_closed_actions') {
+            const setupData = customRoleSetup.get(userId);
+            const hexColor = interaction.customId.replace('color_', '#');
             const guild = interaction.guild;
-            const channel = interaction.channel;
-            const topic = channel.topic || '';
-            const ownerIdMatch = topic.match(/OWNER:(\d+)/);
-            const ownerId = ownerIdMatch ? ownerIdMatch[1] : null;
+            const member = interaction.member;
 
-            if (!interaction.member.permissions.has(PermissionsBitField.Flags.ManageChannels)) {
-                return interaction.reply({ embeds: [createErrorEmbed('Bu işlemi gerçekleştirmek için yetkili olmanız gerekmektedir.')], flags: MessageFlags.Ephemeral });
-            }
-
-            const action = interaction.values[0];
-
-            if (action === 'ticket_delete') {
-                await interaction.reply({ embeds: [createEmbed('🗑️ Bilet Silindi', 'Bu bilet kalıcı olarak siliniyor...', 0xE74C3C)] });
-                await sendLog(guild, '🗑️ Bilet Silindi', `**Kanal:** ${channel.name}\n**Silen:** ${interaction.user.tag}`, 0xE74C3C);
-                setTimeout(() => channel.delete().catch(() => {}), 3000);
-            }
-
-            if (action === 'ticket_reopen') {
-                if (!ownerId) {
-                    return interaction.reply({ embeds: [createErrorEmbed('Bilet sahibi bilgisine ulaşılamadı.')], flags: MessageFlags.Ephemeral });
-                }
-
-                await channel.permissionOverwrites.edit(ownerId, {
-                    ViewChannel: true,
-                    SendMessages: true,
-                    ReadMessageHistory: true
+            try {
+                const newRole = await guild.roles.create({
+                    name: setupData.name,
+                    color: hexColor,
+                    reason: `${interaction.user.tag} için özel takviyeci rolü oluşturuldu.`,
+                    permissions: []
                 });
 
-                const reopenEmbed = new EmbedBuilder()
-                    .setTitle('🔓 Bilet Yeniden Açıldı')
-                    .setDescription(`Bu bilet <@${interaction.user.id}> tarafından yeniden açılmıştır.\n\n<@${ownerId}> Biletiniz yeniden aktif hale getirildi.`)
-                    .setColor(0x2ECC71)
-                    .setTimestamp()
-                    .setFooter({ text: 'Azuron Türkiye Destek Sistemi', iconURL: client.user.displayAvatarURL() });
+                await member.roles.add(newRole);
+                userCustomRoles.set(userId, newRole.id);
+                customRoleSetup.delete(userId);
 
-                const closeAgainButton = new ButtonBuilder()
-                    .setCustomId('ticket_close_btn')
-                    .setLabel('Bileti Kapat')
-                    .setStyle(ButtonStyle.Danger)
-                    .setEmoji('🔒');
+                await interaction.update({ 
+                    embeds: [createEmbed('Özel Rol Oluşturuldu 🎉', `**${setupData.name}** isimli özel rolünüz başarıyla oluşturuldu ve size verildi!`, 0x2ECC71)], 
+                    components: [] 
+                });
+                await sendLog(guild, '✨ Özel Rol Oluşturuldu', `**Oluşturan:** ${interaction.user.tag}\n**Rol Adı:** ${setupData.name}\n**Renk:** ${hexColor}`, 0x2ECC71);
 
-                const btnRow = new ActionRowBuilder().addComponents(closeAgainButton);
-
-                await interaction.reply({ embeds: [reopenEmbed], components: [btnRow] });
-                await sendLog(guild, '🔓 Bilet Yeniden Açıldı', `**Kanal:** ${channel.name}\n**Açan Yetkili:** ${interaction.user.tag}`, 0x2ECC71);
-            }
-            return;
-        }
-
-        if (interaction.customId.startsWith('vc_')) {
-            const channel = interaction.channel;
-            if (!interaction.member.permissionsIn(channel).has(PermissionsBitField.Flags.ManageChannels)) {
-                return interaction.reply({ embeds: [createErrorEmbed('**Yetkisiz Erişim:** Bu odanın yönetim paneline erişim izniniz bulunmamaktadır.')], flags: MessageFlags.Ephemeral });
-            }
-
-            const selection = interaction.values[0];
-
-            if (selection === 'action_invite_id') {
-                const modal = new ModalBuilder().setCustomId('modal_invite').setTitle('Üye Davet');
-                const input = new TextInputBuilder().setCustomId('invite_id').setLabel('Kullanıcı ID').setStyle(TextInputStyle.Short).setPlaceholder('Örn: 123456789012345678').setRequired(true);
-                modal.addComponents(new ActionRowBuilder().addComponents(input));
-                await interaction.showModal(modal);
-            } else if (selection === 'action_kick_id') {
-                const modal = new ModalBuilder().setCustomId('modal_kick').setTitle('Üye Uzaklaştırma');
-                const input = new TextInputBuilder().setCustomId('kick_id').setLabel('Kullanıcı ID').setStyle(TextInputStyle.Short).setPlaceholder('Örn: 123456789012345678').setRequired(true);
-                modal.addComponents(new ActionRowBuilder().addComponents(input));
-                await interaction.showModal(modal);
-            } else if (selection === 'action_lock') {
-                await channel.permissionOverwrites.edit(interaction.guild.id, { Connect: false });
-                interaction.reply({ embeds: [createEmbed('Oda Kilitlendi', 'Oda kilitlenmiştir.', 0xE74C3C)], flags: MessageFlags.Ephemeral });
-            } else if (selection === 'action_unlock') {
-                await channel.permissionOverwrites.edit(interaction.guild.id, { Connect: null });
-                interaction.reply({ embeds: [createEmbed('Oda Kilidi Açıldı', 'Oda kilidi açılmıştır.', 0x2ECC71)], flags: MessageFlags.Ephemeral });
-            } else if (selection === 'action_delete') {
-                interaction.reply({ embeds: [createEmbed('Silme İşlemi', 'Kanal siliniyor...', 0xE74C3C)], flags: MessageFlags.Ephemeral });
-                await channel.delete();
-            } else if (selection === 'action_info') {
-                const memberCount = channel.members.size;
-                const limit = channel.userLimit === 0 ? 'Sınırsız' : channel.userLimit;
-                const bitrate = channel.bitrate / 1000;
-                const isLocked = channel.permissionOverwrites.resolve(interaction.guild.id)?.deny.has(PermissionsBitField.Flags.Connect) ? '🔒 Kilitli' : '🔓 Açık';
-                const region = channel.rtcRegion || 'Otomatik';
-                const membersList = channel.members.map(m => m.user.tag).join(', ') || 'Odada kimse yok.';
-                const shortMembersList = membersList.length > 1000 ? membersList.substring(0, 997) + '...' : membersList;
-                const infoEmbed = createEmbed('📊 Oda İstatistikleri', null, 0x3498DB)
-                    .addFields(
-                        { name: 'Kanal Adı', value: `${channel.name}`, inline: true },
-                        { name: 'Kanal ID', value: `\`${channel.id}\``, inline: true },
-                        { name: 'Kilit Durumu', value: `${isLocked}`, inline: true },
-                        { name: 'Ses Kalitesi', value: `${bitrate} kbps`, inline: true },
-                        { name: 'Sunucu Bölgesi', value: `${region}`, inline: true },
-                        { name: 'Doluluk Oranı', value: `${memberCount} / ${limit}`, inline: true },
-                        { name: 'Aktif Kullanıcılar', value: `\`\`\`${shortMembersList}\`\`\``, inline: false }
-                    );
-                interaction.reply({ embeds: [infoEmbed], flags: MessageFlags.Ephemeral });
-            } else if (selection === 'action_name') {
-                const modal = new ModalBuilder().setCustomId('modal_rename').setTitle('Kanal Adını Düzenle');
-                const input = new TextInputBuilder().setCustomId('new_name').setLabel('Yeni İsim').setStyle(TextInputStyle.Short).setRequired(true);
-                modal.addComponents(new ActionRowBuilder().addComponents(input));
-                await interaction.showModal(modal);
-            } else if (selection === 'action_limit') {
-                const modal = new ModalBuilder().setCustomId('modal_limit').setTitle('Kapasite Sınırı');
-                const input = new TextInputBuilder().setCustomId('new_limit').setLabel('Limit (0 = Sınırsız)').setStyle(TextInputStyle.Short).setRequired(true);
-                modal.addComponents(new ActionRowBuilder().addComponents(input));
-                await interaction.showModal(modal);
+            } catch (error) {
+                customRoleSetup.delete(userId);
+                await interaction.update({ 
+                    embeds: [createErrorEmbed('Rol oluşturulurken bir yetki hatası meydana geldi. Lütfen yöneticilere bildirin.')], 
+                    components: [] 
+                });
             }
         }
-    }
 
-    if (interaction.isButton()) {
+        if (interaction.customId.startsWith('confirm_delete_')) {
+            const roleId = interaction.customId.replace('confirm_delete_', '');
+            const guild = interaction.guild;
+            const role = guild.roles.cache.get(roleId);
+
+            if (role) {
+                try {
+                    await role.delete(`${interaction.user.tag} kendi isteğiyle özel rolünü sildi.`);
+                    userCustomRoles.delete(interaction.user.id);
+                    await interaction.update({ embeds: [createEmbed('Rol Silindi', 'Özel rolünüz başarıyla silindi.', 0x2ECC71)], components: [] });
+                    await sendLog(guild, '🗑️ Özel Rol Silindi', `**Silen:** ${interaction.user.tag}\n**Rol:** ${role.name}`, 0xE74C3C);
+                } catch (error) {
+                    await interaction.update({ embeds: [createErrorEmbed('Rol silinirken yetki hatası oluştu.')], components: [] });
+                }
+            } else {
+                userCustomRoles.delete(interaction.user.id);
+                await interaction.update({ embeds: [createErrorEmbed('Rol zaten silinmiş veya bulunamadı.')], components: [] });
+            }
+        }
+
+        if (interaction.customId === 'cancel_delete') {
+            await interaction.update({ embeds: [createEmbed('İşlem İptal Edildi', 'Rol silme işlemi iptal edildi.', 0x5865F2)], components: [] });
+        }
+        
         if (interaction.customId === 'btn_open_mod_form') {
             if (pendingApplications.has(interaction.user.id)) {
                 return interaction.reply({ 
@@ -907,6 +936,145 @@ client.on('interactionCreate', async interaction => {
             }
 
             await interaction.update({ embeds: [originalEmbed], components: [] });
+        }
+    }
+
+    if (interaction.isStringSelectMenu()) {
+        if (interaction.customId === 'ticket_open_menu') {
+            const value = interaction.values[0];
+            const typeMap = {
+                open_support_ticket: '🎫 Destek',
+                open_report_ticket: '🚨 Şikayet',
+                open_suggestion_ticket: '💡 Öneri'
+            };
+            const selectedType = typeMap[value] || 'Genel';
+
+            const modal = new ModalBuilder()
+                .setCustomId(`modal_ticket_${value}`)
+                .setTitle(`${selectedType} Bileti Oluştur`);
+
+            const topicInput = new TextInputBuilder()
+                .setCustomId('ticket_topic')
+                .setLabel('Bilet Konusu')
+                .setStyle(TextInputStyle.Paragraph)
+                .setPlaceholder('Sorununuzu veya talebinizi kısaca açıklayın...')
+                .setMinLength(10)
+                .setMaxLength(500)
+                .setRequired(true);
+
+            modal.addComponents(new ActionRowBuilder().addComponents(topicInput));
+            await interaction.showModal(modal);
+            return;
+        }
+
+        if (interaction.customId === 'ticket_closed_actions') {
+            const guild = interaction.guild;
+            const channel = interaction.channel;
+            const topic = channel.topic || '';
+            const ownerIdMatch = topic.match(/OWNER:(\d+)/);
+            const ownerId = ownerIdMatch ? ownerIdMatch[1] : null;
+
+            if (!interaction.member.permissions.has(PermissionsBitField.Flags.ManageChannels)) {
+                return interaction.reply({ embeds: [createErrorEmbed('Bu işlemi gerçekleştirmek için yetkili olmanız gerekmektedir.')], flags: MessageFlags.Ephemeral });
+            }
+
+            const action = interaction.values[0];
+
+            if (action === 'ticket_delete') {
+                await interaction.reply({ embeds: [createEmbed('🗑️ Bilet Silindi', 'Bu bilet kalıcı olarak siliniyor...', 0xE74C3C)] });
+                await sendLog(guild, '🗑️ Bilet Silindi', `**Kanal:** ${channel.name}\n**Silen:** ${interaction.user.tag}`, 0xE74C3C);
+                setTimeout(() => channel.delete().catch(() => {}), 3000);
+            }
+
+            if (action === 'ticket_reopen') {
+                if (!ownerId) {
+                    return interaction.reply({ embeds: [createErrorEmbed('Bilet sahibi bilgisine ulaşılamadı.')], flags: MessageFlags.Ephemeral });
+                }
+
+                await channel.permissionOverwrites.edit(ownerId, {
+                    ViewChannel: true,
+                    SendMessages: true,
+                    ReadMessageHistory: true
+                });
+
+                const reopenEmbed = new EmbedBuilder()
+                    .setTitle('🔓 Bilet Yeniden Açıldı')
+                    .setDescription(`Bu bilet <@${interaction.user.id}> tarafından yeniden açılmıştır.\n\n<@${ownerId}> Biletiniz yeniden aktif hale getirildi.`)
+                    .setColor(0x2ECC71)
+                    .setTimestamp()
+                    .setFooter({ text: 'Azuron Türkiye Destek Sistemi', iconURL: client.user.displayAvatarURL() });
+
+                const closeAgainButton = new ButtonBuilder()
+                    .setCustomId('ticket_close_btn')
+                    .setLabel('Bileti Kapat')
+                    .setStyle(ButtonStyle.Danger)
+                    .setEmoji('🔒');
+
+                const btnRow = new ActionRowBuilder().addComponents(closeAgainButton);
+
+                await interaction.reply({ embeds: [reopenEmbed], components: [btnRow] });
+                await sendLog(guild, '🔓 Bilet Yeniden Açıldı', `**Kanal:** ${channel.name}\n**Açan Yetkili:** ${interaction.user.tag}`, 0x2ECC71);
+            }
+            return;
+        }
+
+        if (interaction.customId.startsWith('vc_')) {
+            const channel = interaction.channel;
+            if (!interaction.member.permissionsIn(channel).has(PermissionsBitField.Flags.ManageChannels)) {
+                return interaction.reply({ embeds: [createErrorEmbed('**Yetkisiz Erişim:** Bu odanın yönetim paneline erişim izniniz bulunmamaktadır.')], flags: MessageFlags.Ephemeral });
+            }
+
+            const selection = interaction.values[0];
+
+            if (selection === 'action_invite_id') {
+                const modal = new ModalBuilder().setCustomId('modal_invite').setTitle('Üye Davet');
+                const input = new TextInputBuilder().setCustomId('invite_id').setLabel('Kullanıcı ID').setStyle(TextInputStyle.Short).setPlaceholder('Örn: 123456789012345678').setRequired(true);
+                modal.addComponents(new ActionRowBuilder().addComponents(input));
+                await interaction.showModal(modal);
+            } else if (selection === 'action_kick_id') {
+                const modal = new ModalBuilder().setCustomId('modal_kick').setTitle('Üye Uzaklaştırma');
+                const input = new TextInputBuilder().setCustomId('kick_id').setLabel('Kullanıcı ID').setStyle(TextInputStyle.Short).setPlaceholder('Örn: 123456789012345678').setRequired(true);
+                modal.addComponents(new ActionRowBuilder().addComponents(input));
+                await interaction.showModal(modal);
+            } else if (selection === 'action_lock') {
+                await channel.permissionOverwrites.edit(interaction.guild.id, { Connect: false });
+                interaction.reply({ embeds: [createEmbed('Oda Kilitlendi', 'Oda kilitlenmiştir.', 0xE74C3C)], flags: MessageFlags.Ephemeral });
+            } else if (selection === 'action_unlock') {
+                await channel.permissionOverwrites.edit(interaction.guild.id, { Connect: null });
+                interaction.reply({ embeds: [createEmbed('Oda Kilidi Açıldı', 'Oda kilidi açılmıştır.', 0x2ECC71)], flags: MessageFlags.Ephemeral });
+            } else if (selection === 'action_delete') {
+                interaction.reply({ embeds: [createEmbed('Silme İşlemi', 'Kanal siliniyor...', 0xE74C3C)], flags: MessageFlags.Ephemeral });
+                await channel.delete();
+            } else if (selection === 'action_info') {
+                const memberCount = channel.members.size;
+                const limit = channel.userLimit === 0 ? 'Sınırsız' : channel.userLimit;
+                const bitrate = channel.bitrate / 1000;
+                const isLocked = channel.permissionOverwrites.resolve(interaction.guild.id)?.deny.has(PermissionsBitField.Flags.Connect) ? '🔒 Kilitli' : '🔓 Açık';
+                const region = channel.rtcRegion || 'Otomatik';
+                const membersList = channel.members.map(m => m.user.tag).join(', ') || 'Odada kimse yok.';
+                const shortMembersList = membersList.length > 1000 ? membersList.substring(0, 997) + '...' : membersList;
+                const infoEmbed = createEmbed('📊 Oda İstatistikleri', null, 0x3498DB)
+                    .addFields(
+                        { name: 'Kanal Adı', value: `${channel.name}`, inline: true },
+                        { name: 'Kanal ID', value: `\`${channel.id}\``, inline: true },
+                        { name: 'Kilit Durumu', value: `${isLocked}`, inline: true },
+                        { name: 'Ses Kalitesi', value: `${bitrate} kbps`, inline: true },
+                        { name: 'Sunucu Bölgesi', value: `${region}`, inline: true },
+                        { name: 'Doluluk Oranı', value: `${memberCount} / ${limit}`, inline: true },
+                        { name: 'Aktif Kullanıcılar', value: `\`\`\`${shortMembersList}\`\`\``, inline: false }
+                    );
+                interaction.reply({ embeds: [infoEmbed], flags: MessageFlags.Ephemeral });
+            } else if (selection === 'action_name') {
+                const modal = new ModalBuilder().setCustomId('modal_rename').setTitle('Kanal Adını Düzenle');
+                const input = new TextInputBuilder().setCustomId('new_name').setLabel('Yeni İsim').setStyle(TextInputStyle.Short).setRequired(true);
+                modal.addComponents(new ActionRowBuilder().addComponents(input));
+                await interaction.showModal(modal);
+            } else if (selection === 'action_limit') {
+                const modal = new ModalBuilder().setCustomId('modal_limit').setTitle('Kapasite Sınırı');
+                const input = new TextInputBuilder().setCustomId('new_limit').setLabel('Limit (0 = Sınırsız)').setStyle(TextInputStyle.Short).setRequired(true);
+                modal.addComponents(new ActionRowBuilder().addComponents(input));
+                await interaction.showModal(modal);
+            }
         }
     }
 
