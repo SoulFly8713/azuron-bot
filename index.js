@@ -289,6 +289,7 @@ client.on('interactionCreate', async interaction => {
 
         if (commandName === 'mod-form') {
             const durationHours = options.getInteger('sure');
+            const durationMs = durationHours * 3600000;
             const endTime = Math.floor(Date.now() / 1000) + (durationHours * 3600);
 
             const formEmbed = new EmbedBuilder()
@@ -308,7 +309,25 @@ client.on('interactionCreate', async interaction => {
             const row = new ActionRowBuilder().addComponents(formButton);
 
             await interaction.reply({ content: 'Form başarıyla kanala gönderildi.', flags: MessageFlags.Ephemeral });
-            await interaction.channel.send({ embeds: [formEmbed], components: [row] });
+            const formMessage = await interaction.channel.send({ embeds: [formEmbed], components: [row] });
+
+            setTimeout(async () => {
+                try {
+                    const fetchedMessage = await interaction.channel.messages.fetch(formMessage.id);
+                    if (fetchedMessage) {
+                        const disabledButton = new ButtonBuilder()
+                            .setCustomId('btn_open_mod_form')
+                            .setLabel('Başvurular Kapandı')
+                            .setStyle(ButtonStyle.Secondary)
+                            .setEmoji('🔒')
+                            .setDisabled(true);
+                        
+                        const disabledRow = new ActionRowBuilder().addComponents(disabledButton);
+                        
+                        await fetchedMessage.edit({ components: [disabledRow] });
+                    }
+                } catch (error) {}
+            }, durationMs);
         }
 
         if (commandName === 'yardım') {
