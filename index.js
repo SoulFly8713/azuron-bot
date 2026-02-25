@@ -47,6 +47,7 @@ const linkProtection = new Set();
 const deleteTimers = new Map();
 const formCache = new Map();
 const pendingApplications = new Set();
+const autoRoles = new Map();
 
 function createEmbed(title, description, color = 0x5865F2) {
     return new EmbedBuilder()
@@ -108,6 +109,19 @@ client.on('clientReady', async () => {
     }, 60000);
 
     const commands = [
+        new SlashCommandBuilder()
+            .setName('rol')
+            .setDescription('Sunucu rol ayarlarını yönetir.')
+            .addSubcommand(s => s
+                .setName('ayarla')
+                .setDescription('Sunucuya yeni katılanlara verilecek otomatik rolü ayarlar.')
+                .addRoleOption(o => o
+                    .setName('rol')
+                    .setDescription('Verilecek rol')
+                    .setRequired(true)
+                )
+            )
+            .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageRoles),
         new SlashCommandBuilder()
             .setName('mod-form')
             .setDescription('Moderatör başvuru formunu kanala gönderir.')
@@ -175,10 +189,22 @@ client.on('clientReady', async () => {
     }
 });
 
-client.on('guildMemberAdd', member => {
+client.on('guildMemberAdd', async member => {
     const channel = member.guild.channels.cache.get(WELCOME_CHANNEL_ID);
     if (channel) {
         channel.send(`${member} Hoş geldin! Seninle birlikte **${member.guild.memberCount}** kişiyiz!`);
+    }
+
+    const autoRoleId = autoRoles.get(member.guild.id);
+    if (autoRoleId) {
+        const roleToGive = member.guild.roles.cache.get(autoRoleId);
+        if (roleToGive) {
+            try {
+                await member.roles.add(roleToGive);
+            } catch (error) {
+                console.error('Oto-rol verilirken hata oluştu:', error.message);
+            }
+        }
     }
 });
 
@@ -400,6 +426,35 @@ client.on('interactionCreate', async interaction => {
                         embeds: [createErrorEmbed('Bilet sistemi zaten kurulu. Lütfen mevcut **🎫 Bilet Sistemi** kategorisini kontrol edin.')]
                     });
                 }
+
+                if (commandName === 'rol') {
+            const sub = options.getSubcommand();
+            if (sub === 'ayarla') {
+                const targetRole = options.getRole('rol');
+                const guildId = guild.id;
+
+                if (targetRole.position >= guild.members.me.roles.highest.position) {
+                    return interaction.reply({ 
+                        embeds: [createErrorEmbed(`**İşlem Başarısız:** ${targetRole} rolü benim rollerimden daha üstte veya aynı sırada. Lütfen sunucu ayarlarından benim rolümü daha yukarı taşıyın.`)], 
+                        flags: MessageFlags.Ephemeral 
+                    });
+                }
+
+                if (autoRoles.get(guildId) === targetRole.id) {
+                    autoRoles.delete(guildId);
+                    return interaction.reply({ 
+                        embeds: [createEmbed('Otomatik Rol Kapatıldı', `Otomatik rol sistemi devre dışı bırakıldı. Artık yeni üyelere ${targetRole} rolü **verilmeyecek**.`, 0xE74C3C)] 
+                    });
+                } 
+                // Ayarlı değilse veya farklı bir rol seçildiyse -> Sistemi Aç/Güncelle
+                else {
+                    autoRoles.set(guildId, targetRole.id);
+                    return interaction.reply({ 
+                        embeds: [createEmbed('Otomatik Rol Ayarlandı', `Otomatik rol başarıyla ${targetRole} olarak ayarlandı. Sunucuya yeni katılanlara bu rol verilecek.`, 0x2ECC71)] 
+                    });
+                }
+            }
+        }
 
                 const ticketCategory = await guild.channels.create({
                     name: '🎫 Bilet Sistemi',
