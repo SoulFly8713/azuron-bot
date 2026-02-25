@@ -383,7 +383,7 @@ client.on('interactionCreate', async interaction => {
                 }
 
                 await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-                const setupEmbed = createEmbed('Özel Rol Kurulumu (Adım 1/2)', 'Lütfen oluşturmak istediğiniz özel rolün adını bu kanala yazın. (Bu mesaj sadece sizin tarafınızdan görülmektedir)', 0x5865F2);
+                const setupEmbed = createEmbed('Özel Rol Kurulumu (Adım 1/2)', 'Lütfen oluşturmak istediğiniz özel rolün adını bu kanala yazın.', 0x5865F2);
                 await interaction.editReply({ embeds: [setupEmbed] });
 
                 customRoleSetup.set(member.id, { step: 'name', originalInteraction: interaction });
