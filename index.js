@@ -5,8 +5,8 @@ const {
     TextInputStyle, REST, Routes, SlashCommandBuilder, ActivityType
 } = require('discord.js');
 const { joinVoiceChannel, getVoiceConnection } = require('@discordjs/voice');
-
 const express = require("express");
+
 const app = express();
 
 app.get("/", (req, res) => {
@@ -38,12 +38,14 @@ client.on('error', error => {
 
 const LOG_CHANNEL_ID = '1470356769653133368';
 const SUGGESTION_CHANNEL_ID = '1470356769653133368';
+const MOD_FORM_CHANNEL_ID = '1470356769653133368';
 const WELCOME_CHANNEL_ID = '1471564344578932829';
 const BOT_VOICE_CHANNEL_ID = '1473737542166774042';
 const TICKET_STAFF_ROLE_ID = '1464184391881457704';
 
 const linkProtection = new Set();
 const deleteTimers = new Map();
+const formCache = new Map();
 
 function createEmbed(title, description, color = 0x5865F2) {
     return new EmbedBuilder()
@@ -105,6 +107,11 @@ client.on('clientReady', async () => {
     }, 60000);
 
     const commands = [
+        new SlashCommandBuilder()
+            .setName('mod-form')
+            .setDescription('Moderatör başvuru formunu kanala gönderir.')
+            .addIntegerOption(o => o.setName('sure').setDescription('Formun açık kalacağı süre (Saat cinsinden)').setRequired(true))
+            .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator),
         new SlashCommandBuilder()
             .setName('ses-panel')
             .setDescription('Ses yönetim panelini aktif eder (Yönetici)')
@@ -279,11 +286,35 @@ client.on('interactionCreate', async interaction => {
     if (interaction.isChatInputCommand()) {
         const { commandName, options, member, guild } = interaction;
 
+        if (commandName === 'mod-form') {
+            const durationHours = options.getInteger('sure');
+            const endTime = Math.floor(Date.now() / 1000) + (durationHours * 3600);
+
+            const formEmbed = new EmbedBuilder()
+                .setTitle('🛡️ Moderatör Başvuru Formu')
+                .setDescription(`Sunucumuzun yetkili ekibine katılmak istiyorsan aşağıdaki butona tıklayarak başvuru formunu doldurabilirsin.\n\n⏳ **Son Başvuru:** <t:${endTime}:F> (<t:${endTime}:R>)\n\nLütfen soruları özenle ve dürüstçe yanıtlayın. Form **iki aşamalıdır**, ilk 5 soruyu gönderdikten sonra diğer 3 soru ekrana gelecektir.`)
+                .setColor(0x5865F2)
+                .setThumbnail(guild.iconURL({ dynamic: true }) || client.user.displayAvatarURL())
+                .setTimestamp()
+                .setFooter({ text: 'Azuron Türkiye Yetkili Alımı', iconURL: client.user.displayAvatarURL() });
+
+            const formButton = new ButtonBuilder()
+                .setCustomId('btn_open_mod_form')
+                .setLabel('Formu Doldur')
+                .setStyle(ButtonStyle.Success)
+                .setEmoji('📝');
+
+            const row = new ActionRowBuilder().addComponents(formButton);
+
+            await interaction.reply({ content: 'Form başarıyla kanala gönderildi.', ephemeral: true });
+            await interaction.channel.send({ embeds: [formEmbed], components: [row] });
+        }
+
         if (commandName === 'yardım') {
             const helpEmbed = createEmbed('📑 Komut Listesi', 'Aşağıda botun kullanılabilir komutları listelenmiştir.', 0x5865F2)
                 .addFields(
                     { name: '🛠️ Genel Komutlar', value: '`/yardım` - Komut listesini gösterir.\n`/öneri` - Sunucu için öneri gönderir.' },
-                    { name: '🛡️ Yönetici Komutları', value: '`/ses-panel` - Özel oda sistemini kurar.\n`/bilet olustur` - Bilet sistemini kurar.\n`/link-engel` - Link korumasını açar/kapatır.\n`/kick` - Kullanıcı atar.\n`/ban` - Kullanıcı yasaklar.\n`/mute` - Kullanıcı susturur.\n`/unmute` - Susturmayı kaldırır.\n`/sil` - Mesajları temizler.' },
+                    { name: '🛡️ Yönetici Komutları', value: '`/mod-form` - Başvuru formunu gönderir.\n`/ses-panel` - Özel oda sistemini kurar.\n`/bilet olustur` - Bilet sistemini kurar.\n`/link-engel` - Link korumasını açar/kapatır.\n`/kick` - Kullanıcı atar.\n`/ban` - Kullanıcı yasaklar.\n`/mute` - Kullanıcı susturur.\n`/unmute` - Susturmayı kaldırır.\n`/sil` - Mesajları temizler.' },
                     { name: '🔊 Ses Sistemi', value: 'Özel oda kurmak için **Oda Oluştur** kanalına girmeniz yeterlidir.' },
                     { name: '🎫 Bilet Sistemi', value: '**bilet-oluştur** kanalındaki menüden destek bileti açabilirsiniz.' }
                 );
@@ -414,7 +445,7 @@ client.on('interactionCreate', async interaction => {
             }
         }
 
-       if (commandName === 'kick') {
+        if (commandName === 'kick') {
             const target = options.getUser('kullanici');
             const reason = options.getString('sebep') || 'Belirtilmedi';
             const targetMember = await guild.members.fetch(target.id).catch(() => null);
@@ -442,7 +473,7 @@ client.on('interactionCreate', async interaction => {
             }
         }
 
-      if (commandName === 'mute') {
+        if (commandName === 'mute') {
             const target = options.getUser('kullanici');
             const duration = options.getInteger('sure');
             const reason = options.getString('sebep') || 'Belirtilmedi';
@@ -612,6 +643,55 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (interaction.isButton()) {
+        if (interaction.customId === 'btn_open_mod_form') {
+            const modal1 = new ModalBuilder().setCustomId('modal_mod_part1').setTitle('Moderatör Başvurusu (Aşama 1/2)');
+
+            const q1 = new TextInputBuilder()
+                .setCustomId('q1')
+                .setLabel('Daha önce yetkili oldun mu? Görevlerin?')
+                .setStyle(TextInputStyle.Paragraph)
+                .setPlaceholder('Daha önce herhangi bir Discord sunucusunda yetkili/moderatör oldun mu? Neler yaptın?')
+                .setRequired(true);
+                
+            const q2 = new TextInputBuilder()
+                .setCustomId('q2')
+                .setLabel('Discord aktiflik süren ve saatlerin?')
+                .setStyle(TextInputStyle.Paragraph)
+                .setPlaceholder("Günlük olarak ortalama kaç saat aktif olabiliyorsun ve hangi saat aralıklarındasın?")
+                .setRequired(true);
+                
+            const q3 = new TextInputBuilder()
+                .setCustomId('q3')
+                .setLabel('Neden bizi seçiyorsun?')
+                .setStyle(TextInputStyle.Paragraph)
+                .setPlaceholder('Neden bizim sunucumuzda moderatör olmak istiyorsun?')
+                .setRequired(true);
+                
+            const q4 = new TextInputBuilder()
+                .setCustomId('q4')
+                .setLabel('Spam/Raid durumunda ne yaparsın?')
+                .setStyle(TextInputStyle.Paragraph)
+                .setPlaceholder('Sunucuya bir anda spam veya reklam saldırısı başlarsa alacağın önlemler ne olur?')
+                .setRequired(true);
+                
+            const q5 = new TextInputBuilder()
+                .setCustomId('q5')
+                .setLabel('Tartışan üyelere nasıl müdahale edersin?')
+                .setStyle(TextInputStyle.Paragraph)
+                .setPlaceholder('İki üye tartışmaya ve hakaret etmeye başlarsa, onlara nasıl müdahale edersin?')
+                .setRequired(true);
+
+            modal1.addComponents(
+                new ActionRowBuilder().addComponents(q1),
+                new ActionRowBuilder().addComponents(q2),
+                new ActionRowBuilder().addComponents(q3),
+                new ActionRowBuilder().addComponents(q4),
+                new ActionRowBuilder().addComponents(q5)
+            );
+
+            await interaction.showModal(modal1);
+        }
+
         if (interaction.customId === 'ticket_close_btn') {
             const channel = interaction.channel;
             const topic = channel.topic || '';
@@ -662,9 +742,155 @@ client.on('interactionCreate', async interaction => {
                 0xE74C3C
             );
         }
+
+        if (interaction.customId.startsWith('mod_approve_') || interaction.customId.startsWith('mod_reject_')) {
+            if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+                return interaction.reply({ embeds: [createErrorEmbed('Bu işlemi sadece yöneticiler yapabilir.')], ephemeral: true });
+            }
+
+            const isApprove = interaction.customId.startsWith('mod_approve_');
+            const targetUserId = interaction.customId.split('_')[2];
+            const targetUser = await client.users.fetch(targetUserId).catch(() => null);
+
+            const originalEmbed = EmbedBuilder.from(interaction.message.embeds[0]);
+
+            if (isApprove) {
+                originalEmbed.setColor(0x2ECC71);
+                originalEmbed.addFields({ name: 'Durum', value: `✅ <@${interaction.user.id}> tarafından onaylandı.` });
+                
+                if (targetUser) {
+                    const dmEmbed = createEmbed(
+                        '✅ Başvurunuz Onaylandı', 
+                        `Merhaba **${targetUser.username}**, \n\n**${interaction.guild.name}** sunucusu için yapmış olduğunuz moderatör başvurusu yetkili ekibimiz tarafından incelendi ve **ONAYLANDI**! \n\nTebrikler!`, 
+                        0x2ECC71
+                    );
+                    await targetUser.send({ embeds: [dmEmbed] }).catch(() => {});
+                }
+            } else {
+                originalEmbed.setColor(0xE74C3C);
+                originalEmbed.addFields({ name: 'Durum', value: `❌ <@${interaction.user.id}> tarafından reddedildi.` });
+                
+                if (targetUser) {
+                    const dmEmbed = createEmbed(
+                        '❌ Başvurunuz Reddedildi', 
+                        `Merhaba **${targetUser.username}**, \n\n**${interaction.guild.name}** sunucusu için yapmış olduğunuz moderatör başvurusu yetkili ekibimiz tarafından detaylıca incelendi ve maalesef **REDDEDİLDİ**. \n\nİlginiz için teşekkür ederiz. Şansınızı tekrar deneyebilirsiniz.`, 
+                        0xE74C3C
+                    );
+                    await targetUser.send({ embeds: [dmEmbed] }).catch(() => {});
+                }
+            }
+
+            await interaction.update({ embeds: [originalEmbed], components: [] });
+        }
     }
 
     if (interaction.isModalSubmit()) {
+        if (interaction.customId === 'modal_mod_part1') {
+            const a1 = interaction.fields.getTextInputValue('q1');
+            const a2 = interaction.fields.getTextInputValue('q2');
+            const a3 = interaction.fields.getTextInputValue('q3');
+            const a4 = interaction.fields.getTextInputValue('q4');
+            const a5 = interaction.fields.getTextInputValue('q5');
+
+            if (formCache.has(interaction.user.id)) {
+                clearTimeout(formCache.get(interaction.user.id).timer);
+            }
+
+            formCache.set(interaction.user.id, {
+                answers: { a1, a2, a3, a4, a5 },
+                timer: setTimeout(() => formCache.delete(interaction.user.id), 15 * 60 * 1000)
+            });
+
+            const modal2 = new ModalBuilder().setCustomId('modal_mod_part2').setTitle('Moderatör Başvurusu (Aşama 2/2)');
+
+            const q6 = new TextInputBuilder()
+                .setCustomId('q6')
+                .setLabel('İyi bir moderatörün 3 özelliği?')
+                .setStyle(TextInputStyle.Paragraph)
+                .setPlaceholder('Sence iyi bir moderatörün en önemli üç özelliği ne olmalıdır?')
+                .setRequired(true);
+                
+            const q7 = new TextInputBuilder()
+                .setCustomId('q7')
+                .setLabel('Sohbeti canlandırmak için ne yaparsın?')
+                .setStyle(TextInputStyle.Paragraph)
+                .setPlaceholder('Sunucudaki üyelerin daha aktif olması ve sohbetin canlanması için neler yapabilirsin?')
+                .setRequired(true);
+                
+            const q8 = new TextInputBuilder()
+                .setCustomId('q8')
+                .setLabel('Kararsız kaldığın durumda ne yaparsın?')
+                .setStyle(TextInputStyle.Paragraph)
+                .setPlaceholder('Karar vermekte zorlandığın veya nasıl bir ceza vereceğinden emin olmadığın bir durumda ne yaparsın?')
+                .setRequired(true);
+
+            modal2.addComponents(
+                new ActionRowBuilder().addComponents(q6),
+                new ActionRowBuilder().addComponents(q7),
+                new ActionRowBuilder().addComponents(q8)
+            );
+
+            await interaction.showModal(modal2);
+        }
+
+        if (interaction.customId === 'modal_mod_part2') {
+            const cacheData = formCache.get(interaction.user.id);
+            if (!cacheData) {
+                return interaction.reply({ embeds: [createErrorEmbed('Başvuru süreniz doldu veya bir hata oluştu. Lütfen baştan başlayın.')], ephemeral: true });
+            }
+
+            await interaction.deferReply({ ephemeral: true });
+
+            const { a1, a2, a3, a4, a5 } = cacheData.answers;
+            const a6 = interaction.fields.getTextInputValue('q6');
+            const a7 = interaction.fields.getTextInputValue('q7');
+            const a8 = interaction.fields.getTextInputValue('q8');
+
+            clearTimeout(cacheData.timer);
+            formCache.delete(interaction.user.id);
+
+            const resultChannel = interaction.guild.channels.cache.get(MOD_FORM_CHANNEL_ID);
+
+            if (resultChannel) {
+                const appEmbed = new EmbedBuilder()
+                    .setTitle('📄 Yeni Moderatör Başvurusu')
+                    .setAuthor({ name: interaction.user.tag, iconURL: interaction.user.displayAvatarURL() })
+                    .setColor(0x3498DB)
+                    .addFields(
+                        { name: '👤 Başvuran', value: `<@${interaction.user.id}> (ID: ${interaction.user.id})`, inline: false },
+                        { name: '1️⃣ Daha önce yetkili oldun mu?', value: a1, inline: false },
+                        { name: '2️⃣ Aktiflik saatlerin?', value: a2, inline: false },
+                        { name: '3️⃣ Neden biz?', value: a3, inline: false },
+                        { name: '4️⃣ Spam/Raid durumunda alacağın önlemler?', value: a4, inline: false },
+                        { name: '5️⃣ Tartışmalara müdahale?', value: a5, inline: false },
+                        { name: '6️⃣ İyi modun 3 özelliği?', value: a6, inline: false },
+                        { name: '7️⃣ Sohbet canlandırma?', value: a7, inline: false },
+                        { name: '8️⃣ Kararsız kalınan anlar?', value: a8, inline: false }
+                    )
+                    .setTimestamp()
+                    .setFooter({ text: 'Azuron Türkiye Başvuru Sistemi' });
+
+                const approveBtn = new ButtonBuilder()
+                    .setCustomId(`mod_approve_${interaction.user.id}`)
+                    .setLabel('Onayla')
+                    .setStyle(ButtonStyle.Success)
+                    .setEmoji('✅');
+
+                const rejectBtn = new ButtonBuilder()
+                    .setCustomId(`mod_reject_${interaction.user.id}`)
+                    .setLabel('Reddet')
+                    .setStyle(ButtonStyle.Danger)
+                    .setEmoji('❌');
+
+                const actionRow = new ActionRowBuilder().addComponents(approveBtn, rejectBtn);
+
+                await resultChannel.send({ embeds: [appEmbed], components: [actionRow] });
+                await interaction.editReply({ embeds: [createEmbed('Başarılı', '8 soruluk başvuru formunuz yetkililere başarıyla iletildi. İlginiz için teşekkür ederiz.', 0x2ECC71)] });
+            } else {
+                await interaction.editReply({ embeds: [createErrorEmbed('Başvuru gönderilecek kanal bulunamadı. Lütfen yöneticilere bildirin.')] });
+            }
+        }
+
         if (
             interaction.customId === 'modal_ticket_open_support_ticket' ||
             interaction.customId === 'modal_ticket_open_report_ticket' ||
@@ -843,7 +1069,7 @@ client.on('interactionCreate', async interaction => {
             }
         }
 
-if (interaction.customId === 'modal_suggestion') {
+        if (interaction.customId === 'modal_suggestion') {
             const text = interaction.fields.getTextInputValue('suggestion_text');
             const suggestionChannel = interaction.guild.channels.cache.get(SUGGESTION_CHANNEL_ID);
             if (suggestionChannel) {
