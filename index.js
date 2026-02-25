@@ -46,6 +46,7 @@ const TICKET_STAFF_ROLE_ID = '1464184391881457704';
 const linkProtection = new Set();
 const deleteTimers = new Map();
 const formCache = new Map();
+const pendingApplications = new Set();
 
 function createEmbed(title, description, color = 0x5865F2) {
     return new EmbedBuilder()
@@ -644,6 +645,14 @@ client.on('interactionCreate', async interaction => {
 
     if (interaction.isButton()) {
         if (interaction.customId === 'btn_open_mod_form') {
+
+            if (pendingApplications.has(interaction.user.id)) {
+                return interaction.reply({ 
+                    embeds: [createErrorEmbed('Zaten yetkililer tarafından değerlendirilmeyi bekleyen bir başvurunuz bulunuyor. Lütfen sonucun açıklanmasını bekleyin.')], 
+                    flags: MessageFlags.Ephemeral 
+                });
+            }
+            
             const modal1 = new ModalBuilder().setCustomId('modal_mod_part1').setTitle('Moderatör Başvurusu (Aşama 1/2)');
 
             const q1 = new TextInputBuilder()
@@ -790,11 +799,18 @@ client.on('interactionCreate', async interaction => {
             const targetUserId = interaction.customId.split('_')[2];
             const targetUser = await client.users.fetch(targetUserId).catch(() => null);
 
+            pendingApplications.delete(targetUserId);
+
             const originalEmbed = EmbedBuilder.from(interaction.message.embeds[0]);
 
             if (isApprove) {
                 originalEmbed.setColor(0x2ECC71);
                 originalEmbed.addFields({ name: 'Durum', value: `✅ <@${interaction.user.id}> tarafından onaylandı.` });
+
+                const targetMember = await interaction.guild.members.fetch(targetUserId).catch(() => null);
+                if (targetMember) {
+                    await targetMember.roles.add('1473256763028672512').catch(err => console.error('Rol verilirken hata oluştu:', err));
+                }
                 
                 if (targetUser) {
                     const dmEmbed = createEmbed(
@@ -906,7 +922,10 @@ client.on('interactionCreate', async interaction => {
                 const actionRow = new ActionRowBuilder().addComponents(approveBtn, rejectBtn);
 
                 await resultChannel.send({ embeds: [appEmbed], components: [actionRow] });
-                await interaction.editReply({ embeds: [createEmbed('Başarılı', '8 soruluk başvuru formunuz yetkililere başarıyla iletildi. İlginiz için teşekkür ederiz.', 0x2ECC71)] });
+                
+                pendingApplications.add(interaction.user.id);
+                
+                await interaction.editReply({ embeds: [createEmbed('Başarılı', 'Başvuru formunuz yetkililere başarıyla iletildi. İlginiz için teşekkür ederiz.', 0x2ECC71)] });
             } else {
                 await interaction.editReply({ embeds: [createErrorEmbed('Başvuru gönderilecek kanal bulunamadı. Lütfen yöneticilere bildirin.')] });
             }
