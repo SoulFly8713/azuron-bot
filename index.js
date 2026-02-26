@@ -13,13 +13,9 @@ app.get("/", (req, res) => {
     res.send("Bot aktif 🚀");
 });
 
-app.listen(process.env.PORT || 3000, () => {
-    console.log("Web server aktif.");
-});
+app.listen(process.env.PORT || 3000, () => {});
 
-process.on('unhandledRejection', error => {
-    console.error('Hata:', error.message);
-});
+process.on('unhandledRejection', error => {});
 
 const client = new Client({
     intents: [
@@ -32,9 +28,7 @@ const client = new Client({
     partials: [Partials.Channel]
 });
 
-client.on('error', error => {
-    console.error('Discord API Hatası:', error.message);
-});
+client.on('error', error => {});
 
 const LOG_CHANNEL_ID = '1470356769653133368';
 const SUGGESTION_CHANNEL_ID = '1470356769653133368';
@@ -42,6 +36,7 @@ const MOD_FORM_CHANNEL_ID = '1470356769653133368';
 const WELCOME_CHANNEL_ID = '1471564344578932829';
 const BOT_VOICE_CHANNEL_ID = '1473737542166774042';
 const TICKET_STAFF_ROLE_ID = '1464184391881457704';
+const TARGET_ROLE_ID = '1473029465587323076';
 
 const linkProtection = new Set();
 const deleteTimers = new Map();
@@ -76,8 +71,41 @@ async function sendLog(guild, title, description, color = 0xE67E22) {
     }
 }
 
+async function finalizeCustomRoleSetup(guild, member, setupData, iconUrl, replyMethod) {
+    try {
+        const targetRole = guild.roles.cache.get(TARGET_ROLE_ID);
+        const options = {
+            name: setupData.name,
+            color: setupData.color,
+            reason: `${member.user.tag} için özel takviyeci rolü oluşturuldu.`,
+            permissions: []
+        };
+
+        if (iconUrl && guild.features.includes('ROLE_ICONS')) {
+            options.icon = iconUrl;
+        }
+
+        const newRole = await guild.roles.create(options);
+        
+        if (targetRole) {
+            await newRole.setPosition(targetRole.position + 1).catch(() => {});
+        }
+
+        await member.roles.add(newRole);
+        userCustomRoles.set(member.id, newRole.id);
+        customRoleSetup.delete(member.id);
+
+        const successEmbed = createEmbed('Özel Rol Oluşturuldu 🎉', `**${setupData.name}** isimli özel rolünüz başarıyla oluşturuldu ve size verildi!`, 0x2ECC71);
+
+        await replyMethod(successEmbed);
+        await sendLog(guild, '✨ Özel Rol Oluşturuldu', `**Oluşturan:** ${member.user.tag}\n**Rol Adı:** ${setupData.name}\n**Renk:** ${setupData.color}`, 0x2ECC71);
+    } catch (error) {
+        customRoleSetup.delete(member.id);
+        await replyMethod(createErrorEmbed('Rol oluşturulurken bir hata meydana geldi. Sunucunun rol ikonlarını desteklediğinden ve yetkilerimin tam olduğundan emin olun.'));
+    }
+}
+
 client.on('clientReady', async () => {
-    console.log(`${client.user.tag} aktif.`);
     client.user.setActivity({
         name: 'Azuron Türkiye',
         type: ActivityType.Streaming,
@@ -92,7 +120,6 @@ client.on('clientReady', async () => {
             adapterCreator: voiceChannel.guild.voiceAdapterCreator,
             selfDeaf: true
         });
-        console.log(`Bot ${voiceChannel.name} kanalına bağlandı.`);
     }
 
     setInterval(() => {
@@ -196,10 +223,7 @@ client.on('clientReady', async () => {
     const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
     try {
         await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
-        console.log('Slash komutlar başarıyla yüklendi.');
-    } catch (error) {
-        console.error(error);
-    }
+    } catch (error) {}
 });
 
 client.on('guildMemberAdd', async member => {
@@ -214,9 +238,7 @@ client.on('guildMemberAdd', async member => {
         if (roleToGive) {
             try {
                 await member.roles.add(roleToGive);
-            } catch (error) {
-                console.error('Oto-rol verilirken hata oluştu:', error.message);
-            }
+            } catch (error) {}
         }
     }
 });
@@ -224,42 +246,63 @@ client.on('guildMemberAdd', async member => {
 client.on('messageCreate', async message => {
     if (message.author.bot || !message.guild) return;
     
-    if (customRoleSetup.has(message.author.id) && customRoleSetup.get(message.author.id).step === 'name') {
+    if (customRoleSetup.has(message.author.id)) {
         const setupData = customRoleSetup.get(message.author.id);
-        const roleName = message.content;
         
-        const row1 = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('color_FF0000').setLabel('Kırmızı').setStyle(ButtonStyle.Danger),
-            new ButtonBuilder().setCustomId('color_00FF00').setLabel('Yeşil').setStyle(ButtonStyle.Success),
-            new ButtonBuilder().setCustomId('color_0000FF').setLabel('Mavi').setStyle(ButtonStyle.Primary),
-            new ButtonBuilder().setCustomId('color_FFFF00').setLabel('Sarı').setStyle(ButtonStyle.Secondary)
-        );
-        const row2 = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('color_800080').setLabel('Mor').setStyle(ButtonStyle.Primary),
-            new ButtonBuilder().setCustomId('color_FFA500').setLabel('Turuncu').setStyle(ButtonStyle.Secondary),
-            new ButtonBuilder().setCustomId('color_00FFFF').setLabel('Cyan').setStyle(ButtonStyle.Secondary),
-            new ButtonBuilder().setCustomId('color_FFC0CB').setLabel('Pembe').setStyle(ButtonStyle.Secondary)
-        );
-        const row3 = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('color_FFFFFF').setLabel('Beyaz').setStyle(ButtonStyle.Secondary),
-            new ButtonBuilder().setCustomId('color_000000').setLabel('Siyah').setStyle(ButtonStyle.Secondary),
-            new ButtonBuilder().setCustomId('color_808080').setLabel('Gri').setStyle(ButtonStyle.Secondary),
-            new ButtonBuilder().setCustomId('color_A52A2A').setLabel('Kahverengi').setStyle(ButtonStyle.Secondary)
-        );
-        const row4 = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('color_FFD700').setLabel('Altın').setStyle(ButtonStyle.Secondary),
-            new ButtonBuilder().setCustomId('color_C0C0C0').setLabel('Gümüş').setStyle(ButtonStyle.Secondary),
-            new ButtonBuilder().setCustomId('color_008080').setLabel('Teal').setStyle(ButtonStyle.Secondary),
-            new ButtonBuilder().setCustomId('color_4B0082').setLabel('Lacivert').setStyle(ButtonStyle.Secondary)
-        );
+        if (setupData.step === 'name') {
+            const roleName = message.content;
+            
+            const row1 = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId('color_FF0000').setLabel('Kırmızı').setStyle(ButtonStyle.Danger),
+                new ButtonBuilder().setCustomId('color_00FF00').setLabel('Yeşil').setStyle(ButtonStyle.Success),
+                new ButtonBuilder().setCustomId('color_0000FF').setLabel('Mavi').setStyle(ButtonStyle.Primary),
+                new ButtonBuilder().setCustomId('color_FFFF00').setLabel('Sarı').setStyle(ButtonStyle.Secondary)
+            );
+            const row2 = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId('color_800080').setLabel('Mor').setStyle(ButtonStyle.Primary),
+                new ButtonBuilder().setCustomId('color_FFA500').setLabel('Turuncu').setStyle(ButtonStyle.Secondary),
+                new ButtonBuilder().setCustomId('color_00FFFF').setLabel('Cyan').setStyle(ButtonStyle.Secondary),
+                new ButtonBuilder().setCustomId('color_FFC0CB').setLabel('Pembe').setStyle(ButtonStyle.Secondary)
+            );
+            const row3 = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId('color_FFFFFF').setLabel('Beyaz').setStyle(ButtonStyle.Secondary),
+                new ButtonBuilder().setCustomId('color_000000').setLabel('Siyah').setStyle(ButtonStyle.Secondary),
+                new ButtonBuilder().setCustomId('color_808080').setLabel('Gri').setStyle(ButtonStyle.Secondary),
+                new ButtonBuilder().setCustomId('color_A52A2A').setLabel('Kahverengi').setStyle(ButtonStyle.Secondary)
+            );
+            const row4 = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId('color_FFD700').setLabel('Altın').setStyle(ButtonStyle.Secondary),
+                new ButtonBuilder().setCustomId('color_C0C0C0').setLabel('Gümüş').setStyle(ButtonStyle.Secondary),
+                new ButtonBuilder().setCustomId('color_008080').setLabel('Teal').setStyle(ButtonStyle.Secondary),
+                new ButtonBuilder().setCustomId('color_4B0082').setLabel('Lacivert').setStyle(ButtonStyle.Secondary)
+            );
 
-        const colorEmbed = createEmbed('Özel Rol Kurulumu (Adım 2/2)', `Harika! Rol adını **${roleName}** olarak belirlediniz. Lütfen aşağıdaki butonlardan rolünüzün rengini seçin.`, 0x5865F2);
-        
-        message.delete().catch(() => {});
-        setupData.originalInteraction.editReply({ embeds: [colorEmbed], components: [row1, row2, row3, row4] });
-        
-        customRoleSetup.set(message.author.id, { ...setupData, step: 'color', name: roleName });
-        return;
+            const colorEmbed = createEmbed('Özel Rol Kurulumu (Adım 2/3)', `Harika! Rol adını **${roleName}** olarak belirlediniz. Lütfen aşağıdaki butonlardan rolünüzün rengini seçin.`, 0x5865F2);
+            
+            message.delete().catch(() => {});
+            setupData.originalInteraction.editReply({ embeds: [colorEmbed], components: [row1, row2, row3, row4] });
+            customRoleSetup.set(message.author.id, { ...setupData, step: 'color', name: roleName });
+            return;
+        }
+
+        if (setupData.step === 'icon') {
+            if (message.attachments.size > 0) {
+                const attachment = message.attachments.first();
+                if (attachment.contentType && attachment.contentType.startsWith('image/')) {
+                    const iconUrl = attachment.url;
+                    message.delete().catch(() => {});
+                    await finalizeCustomRoleSetup(message.guild, message.member, setupData, iconUrl, async (embed) => {
+                        await setupData.originalInteraction.editReply({ embeds: [embed], components: [] }).catch(async () => {
+                            await message.channel.send({ content: `<@${message.author.id}>`, embeds: [embed] });
+                        });
+                    });
+                    return;
+                }
+            }
+            message.delete().catch(() => {});
+            message.channel.send({ content: `<@${message.author.id}>, lütfen geçerli bir resim yükleyin veya menüden Atla/İptal seçeneğini kullanın.` }).then(m => setTimeout(() => m.delete().catch(()=>{}), 4000));
+            return;
+        }
     }
     
     const lowerContent = message.content.toLowerCase();
@@ -383,13 +426,13 @@ client.on('interactionCreate', async interaction => {
                 }
 
                 await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-                const setupEmbed = createEmbed('Özel Rol Kurulumu (Adım 1/2)', 'Lütfen oluşturmak istediğiniz özel rolün adını bu kanala yazın.', 0x5865F2);
+                const setupEmbed = createEmbed('Özel Rol Kurulumu (Adım 1/3)', 'Lütfen oluşturmak istediğiniz özel rolün adını bu kanala yazın.', 0x5865F2);
                 await interaction.editReply({ embeds: [setupEmbed] });
 
                 customRoleSetup.set(member.id, { step: 'name', originalInteraction: interaction });
 
                 setTimeout(() => {
-                    if (customRoleSetup.has(member.id)) {
+                    if (customRoleSetup.has(member.id) && customRoleSetup.get(member.id).step === 'name') {
                         customRoleSetup.delete(member.id);
                         interaction.editReply({ embeds: [createErrorEmbed('Belirtilen süre içerisinde yanıt vermediğiniz için kurulum iptal edildi.')], components: [] }).catch(() => {});
                     }
@@ -692,34 +735,38 @@ client.on('interactionCreate', async interaction => {
 
             const setupData = customRoleSetup.get(userId);
             const hexColor = interaction.customId.replace('color_', '#');
-            const guild = interaction.guild;
-            const member = interaction.member;
+            
+            customRoleSetup.set(userId, { ...setupData, step: 'icon', color: hexColor });
 
-            try {
-                const newRole = await guild.roles.create({
-                    name: setupData.name,
-                    color: hexColor,
-                    reason: `${interaction.user.tag} için özel takviyeci rolü oluşturuldu.`,
-                    permissions: []
-                });
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId('skip_icon').setLabel('Atla').setStyle(ButtonStyle.Secondary),
+                new ButtonBuilder().setCustomId('cancel_setup').setLabel('İptal Et').setStyle(ButtonStyle.Danger)
+            );
 
-                await member.roles.add(newRole);
-                userCustomRoles.set(userId, newRole.id);
-                customRoleSetup.delete(userId);
+            await interaction.update({ 
+                embeds: [createEmbed('Özel Rol Kurulumu (Adım 3/3)', `Rol rengini belirlediniz. İsteğe bağlı olarak bu kanala bir resim göndererek rolünüze ikon ekleyebilirsiniz.\nİstemiyorsanız **Atla** butonuna basabilirsiniz.`, 0x5865F2)], 
+                components: [row] 
+            });
+        }
 
-                await interaction.update({ 
-                    embeds: [createEmbed('Özel Rol Oluşturuldu 🎉', `**${setupData.name}** isimli özel rolünüz başarıyla oluşturuldu ve size verildi!`, 0x2ECC71)], 
-                    components: [] 
-                });
-                await sendLog(guild, '✨ Özel Rol Oluşturuldu', `**Oluşturan:** ${interaction.user.tag}\n**Rol Adı:** ${setupData.name}\n**Renk:** ${hexColor}`, 0x2ECC71);
+        if (interaction.customId === 'skip_icon') {
+            const userId = interaction.user.id;
+            if (!customRoleSetup.has(userId) || customRoleSetup.get(userId).step !== 'icon') return;
 
-            } catch (error) {
-                customRoleSetup.delete(userId);
-                await interaction.update({ 
-                    embeds: [createErrorEmbed('Rol oluşturulurken bir yetki hatası meydana geldi. Lütfen yöneticilere bildirin.')], 
-                    components: [] 
-                });
-            }
+            const setupData = customRoleSetup.get(userId);
+            await interaction.deferUpdate();
+            
+            await finalizeCustomRoleSetup(interaction.guild, interaction.member, setupData, null, async (embed) => {
+                await interaction.editReply({ embeds: [embed], components: [] });
+            });
+        }
+
+        if (interaction.customId === 'cancel_setup') {
+            const userId = interaction.user.id;
+            if (!customRoleSetup.has(userId)) return;
+
+            customRoleSetup.delete(userId);
+            await interaction.update({ embeds: [createEmbed('İptal Edildi', 'Özel rol kurulum işlemi iptal edildi.', 0xE74C3C)], components: [] });
         }
 
         if (interaction.customId.startsWith('confirm_delete_')) {
@@ -910,7 +957,7 @@ client.on('interactionCreate', async interaction => {
 
                 const targetMember = await interaction.guild.members.fetch(targetUserId).catch(() => null);
                 if (targetMember) {
-                    await targetMember.roles.add('1473256763028672512').catch(err => console.error('Rol verilirken hata oluştu:', err));
+                    await targetMember.roles.add('1473256763028672512').catch(err => {});
                 }
                 
                 if (targetUser) {
