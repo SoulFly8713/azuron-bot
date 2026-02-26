@@ -309,16 +309,22 @@ client.on('messageCreate', async message => {
     if (lowerContent === 'sa' || lowerContent === 'selamünaleyküm') {
         return message.reply('Aleykümselam, hoş geldin!');
     }
-    if (linkProtection.has(message.guild.id)) {
+   if (linkProtection.has(message.guild.id)) {
         if (message.member.permissions.has(PermissionsBitField.Flags.Administrator)) return;
         
         const discordInviteRegex = /(?:https?:\/\/)?(?:www\.)?(?:discord\.gg\/|discord(?:app)?\.com\/invite\/)([a-zA-Z0-9-]+)/gi;
         
-        if (discordInviteRegex.test(message.content)) {
+        const allowedInvites = ['azuron']; 
+
+        const matches = [...message.content.matchAll(discordInviteRegex)];
+        
+        const hasIllegalLink = matches.some(match => !allowedInvites.includes(match[1].toLowerCase()));
+        
+        if (hasIllegalLink) {
             await message.delete().catch(() => {}); // Mesajı sil
             
             const warningMsg = await message.channel.send({
-                embeds: [createErrorEmbed(`<@${message.author.id}>, **Davet Engeli:** Bu sunucuda başka Discord sunucularının davet bağlantılarını paylaşmak yasaktır!`)]
+                embeds: [createErrorEmbed(`<@${message.author.id}>, **Reklam:** Bu sunucuda başka Discord sunucularının davet bağlantılarını paylaşmak yasaktır!`)]
             });
             
             setTimeout(() => warningMsg.delete().catch(() => {}), 5000);
