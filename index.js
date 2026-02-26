@@ -51,7 +51,6 @@ const userCustomRoles = new Map();
 function createEmbed(title, description, color = 0x5865F2) {
     return new EmbedBuilder()
         .setTitle(title)
-        .setDescription(description || 'İşlem detayları aşağıdadır.')
         .setColor(color)
         .setTimestamp()
         .setFooter({ text: 'Azuron Türkiye', iconURL: client.user.displayAvatarURL() });
@@ -483,9 +482,7 @@ client.on('interactionCreate', async interaction => {
         const { commandName, options, member, guild } = interaction;
 
         if (commandName === 'ping') {
-            const sent = await interaction.reply({ content: 'Hesaplanıyor...', fetchReply: true, flags: MessageFlags.Ephemeral });
-            const latency = sent.createdTimestamp - interaction.createdTimestamp;
-            return interaction.editReply({ content: null, embeds: [createEmbed('🏓 Pong!', `**Bot Gecikmesi:** ${latency}ms\n**API Gecikmesi:** ${Math.round(client.ws.ping)}ms`, 0x2ECC71)] });
+            return interaction.reply({ content: `🏓 ...pong! ${Math.round(client.ws.ping)} ms`, flags: MessageFlags.Ephemeral });
         }
 
         if (commandName === 'sunucu-bilgi') {
@@ -501,7 +498,7 @@ client.on('interactionCreate', async interaction => {
                     { name: 'Takviye Sayısı', value: `${guild.premiumSubscriptionCount || 0}`, inline: true },
                     { name: 'Kuruluş Tarihi', value: `<t:${Math.floor(guild.createdTimestamp / 1000)}:F>`, inline: false }
                 );
-            return interaction.reply({ embeds: [embed] });
+            return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
         }
 
         if (commandName === 'kullanıcı-bilgi') {
@@ -521,7 +518,7 @@ client.on('interactionCreate', async interaction => {
                     { name: 'Roller', value: roles, inline: false }
                 );
             }
-            return interaction.reply({ embeds: [embed] });
+            return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
         }
 
         if (commandName === 'özel') {
