@@ -54,6 +54,10 @@ function createEmbed(title, description, color = 0x5865F2) {
         .setColor(color)
         .setTimestamp()
         .setFooter({ text: 'Azuron Türkiye', iconURL: client.user.displayAvatarURL() });
+
+    if (description) {
+        embed.setDescription(description);
+    }
 }
 
 function createErrorEmbed(description) {
