@@ -311,17 +311,20 @@ client.on('messageCreate', async message => {
     }
     if (linkProtection.has(message.guild.id)) {
         if (message.member.permissions.has(PermissionsBitField.Flags.Administrator)) return;
-        const linkRegex = /(https?:\/\/[^\s]+)|(www\.[^\s]+)|([a-zA-Z0-9]+\.[a-zA-Z]{2,})/gi;
-        if (linkRegex.test(message.content)) {
-            await message.delete().catch(() => {});
+        
+        const discordInviteRegex = /(?:https?:\/\/)?(?:www\.)?(?:discord\.gg\/|discord(?:app)?\.com\/invite\/)([a-zA-Z0-9-]+)/gi;
+        
+        if (discordInviteRegex.test(message.content)) {
+            await message.delete().catch(() => {}); // Mesajı sil
+            
             const warningMsg = await message.channel.send({
-                embeds: [createErrorEmbed(`<@${message.author.id}>, **Link Engel:** Bu sunucuda bağlantı (link) paylaşımı yasaklanmıştır.`)]
+                embeds: [createErrorEmbed(`<@${message.author.id}>, **Davet Engeli:** Bu sunucuda başka Discord sunucularının davet bağlantılarını paylaşmak yasaktır!`)]
             });
+            
             setTimeout(() => warningMsg.delete().catch(() => {}), 5000);
         }
     }
-});
-
+ });
 client.on('voiceStateUpdate', async (oldState, newState) => {
     const generatorChannelId = await getGeneratorChannelId(newState.guild);
 
