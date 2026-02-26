@@ -321,7 +321,7 @@ client.on('messageCreate', async message => {
         const hasIllegalLink = matches.some(match => !allowedInvites.includes(match[1].toLowerCase()));
         
         if (hasIllegalLink) {
-            await message.delete().catch(() => {}); // Mesajı sil
+            await message.delete().catch(() => {});
             
             const warningMsg = await message.channel.send({
                 embeds: [createErrorEmbed(`<@${message.author.id}>, **Reklam:** Bu sunucuda başka Discord sunucularının davet bağlantılarını paylaşmak yasaktır!`)]
