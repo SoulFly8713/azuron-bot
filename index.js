@@ -49,15 +49,17 @@ const customRoleSetup = new Map();
 const userCustomRoles = new Map();
 
 function createEmbed(title, description, color = 0x5865F2) {
-    return new EmbedBuilder()
+    const embed = new EmbedBuilder()
         .setTitle(title)
         .setColor(color)
         .setTimestamp()
         .setFooter({ text: 'Azuron Türkiye', iconURL: client.user.displayAvatarURL() });
-
+        
     if (description) {
         embed.setDescription(description);
     }
+    
+    return embed;
 }
 
 function createErrorEmbed(description) {
