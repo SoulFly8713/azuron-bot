@@ -312,7 +312,11 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
 
 client.on('messageCreate', async message => {
     if (message.author.bot || !message.guild) return;
-    
+
+    if (message.author.id === '1065161665009700895' && message.mentions.has(client.user.id)) {
+        return message.reply('https://tenor.com/view/hmph-hmph-anime-tsundere-gif-25758864');
+    }
+
     if (customRoleSetup.has(message.author.id)) {
         const setupData = customRoleSetup.get(message.author.id);
         
@@ -372,10 +376,21 @@ client.on('messageCreate', async message => {
         }
     }
     
-    const lowerContent = message.content.toLowerCase();
-    if (lowerContent === 'sa' || lowerContent === 'selamünaleyküm') {
-        return message.reply('Aleykümselam, hoş geldin!');
-    }
+const lowerContent = message.content.toLowerCase();
+
+const otoYanitlar = {
+    'sa': 'Aleykümselam, hoş geldin!',
+    'selamünaleyküm': 'Aleykümselam, hoş geldin!',
+    'selam': 'Selam, hoş geldin!',
+    'merhaba': 'Merhaba! Nasılsın?',
+    'günaydın': 'Günaydın!',
+    'iyi geceler': 'İyi geceler!',
+    
+};
+
+if (otoYanitlar[lowerContent]) {
+    return message.reply(otoYanitlar[lowerContent]);
+}
    if (linkProtection.has(message.guild.id)) {
         if (message.member.permissions.has(PermissionsBitField.Flags.Administrator)) return;
         
