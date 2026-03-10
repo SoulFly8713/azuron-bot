@@ -50,7 +50,7 @@ const autoRoles = new Map();
 const customRoleSetup = new Map();
 const userCustomRoles = new Map();
 
-let sonMangaLinki = "test_ediyorum";
+let sonMangaLinki = "";
 const TAKIP_EDILECEK_MANGA = 'https://sadscans.net/series/chainsaw-man';
 
 function createEmbed(title, description, color = 0x5865F2) {
@@ -124,34 +124,44 @@ client.on('clientReady', async () => {
         url: 'https://www.twitch.tv/discord'
     });
 
-   setInterval(async () => {
-        try {
-            const response = await axios.get(TAKIP_EDILECEK_MANGA);
-            const $ = cheerio.load(response.data);
+ let sonMangaLinki = "test_ediyorum";
+const TAKIP_EDILECEK_MANGA = 'https://sadscans.net/series/chainsaw-man';
 
-            const sonBolum = $('a[href*="/reader/"]').first();
-            const link = sonBolum.attr('href');
-            const baslik = sonBolum.find('h3').text().trim();
-
-            let tamLink = link;
-            if (link && !link.startsWith('http')) {
-                tamLink = `https://sadscans.net${link}`;
+setInterval(async () => {
+    try {
+        const response = await axios.get(TAKIP_EDILECEK_MANGA, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7'
             }
+        });
+        const $ = cheerio.load(response.data);
 
-            if (tamLink && tamLink !== sonMangaLinki && sonMangaLinki !== "") {
-                sonMangaLinki = tamLink;
+        const sonBolum = $('a[href*="/reader/"]').first();
+        const link = sonBolum.attr('href');
+        const baslik = sonBolum.find('h3').text().trim();
 
-                const duyuruKanali = client.channels.cache.get('1453839041886814219');
-                if (duyuruKanali) {
-                    const embed = createEmbed('Yeni Bölüm Çıktı! 🎉', `**${baslik}** okumaya hazır!\n\n[Hemen Okumak İçin Tıkla](${tamLink})`, 0x5865F2);
-                    await duyuruKanali.send({ content: '<@&1453839041886814219>', embeds: [embed] });
-                }
-            } else if (sonMangaLinki === "" && tamLink) {
-                sonMangaLinki = tamLink;
-            }
-        } catch (error) {
+        let tamLink = link;
+        if (link && !link.startsWith('http')) {
+            tamLink = `https://sadscans.net${link}`;
         }
-    }, 60000);
+
+        if (tamLink && tamLink !== sonMangaLinki && sonMangaLinki !== "") {
+            sonMangaLinki = tamLink;
+
+            const duyuruKanali = client.channels.cache.get('1453839041886814219');
+            if (duyuruKanali) {
+                const embed = createEmbed('Yeni Bölüm Çıktı! 🎉', `**${baslik}** okumaya hazır!\n\n[Hemen Okumak İçin Tıkla](${tamLink})`, 0x5865F2);
+                await duyuruKanali.send({ content: '<@&1471571169105809686>', embeds: [embed] });
+            }
+        } else if (sonMangaLinki === "" && tamLink) {
+            sonMangaLinki = tamLink;
+        }
+    } catch (error) {
+        console.error("Manga Hata:", error.message);
+    }
+}, 60000);
 
     const voiceChannel = client.channels.cache.get(BOT_VOICE_CHANNEL_ID);
     if (voiceChannel) {
