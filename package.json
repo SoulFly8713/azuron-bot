@@ -12,13 +12,16 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@discordjs/opus": "^0.10.0",
+    "@discordjs/voice": "^0.19.0",
+    "@snazzah/davey": "^0.1.9",
     "axios": "^1.7.2",
     "cheerio": "^1.0.0-rc.12",
     "discord.js": "^14.25.1",
-    "@discordjs/voice": "^0.19.0",
-    "@discordjs/opus": "^0.10.0",
     "express": "^4.19.2",
-    "sodium-native": "^5.0.10",
-    "@snazzah/davey": "^0.1.9"
+    "puppeteer": "^22.0.0",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "sodium-native": "^5.0.10"
   }
 }
