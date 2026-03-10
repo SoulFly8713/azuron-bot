@@ -7,8 +7,10 @@ const {
 } = require('discord.js');
 const { joinVoiceChannel, getVoiceConnection } = require('@discordjs/voice');
 const express = require("express");
-const axios = require('axios');
-const cheerio = require('cheerio');
+const puppeteer = require('puppeteer-extra');
+const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+
+puppeteer.use(StealthPlugin());
 
 const app = express();
 
@@ -124,44 +126,55 @@ client.on('clientReady', async () => {
         url: 'https://www.twitch.tv/discord'
     });
 
- let sonMangaLinki = "test_ediyorum";
-const TAKIP_EDILECEK_MANGA = 'https://sadscans.net/series/chainsaw-man';
+    setInterval(async () => {
+        let browser;
+        try {
+            browser = await puppeteer.launch({
+                headless: true,
+                args: ['--no-sandbox', '--disable-setuid-sandbox']
+            });
+            const page = await browser.newPage();
+            await page.setViewport({ width: 1920, height: 1080 });
+            
+            await page.goto(TAKIP_EDILECEK_MANGA, {
+                waitUntil: 'domcontentloaded',
+                timeout: 60000
+            });
 
-setInterval(async () => {
-    try {
-        const response = await axios.get(TAKIP_EDILECEK_MANGA, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7'
+            const data = await page.evaluate(() => {
+                const sonBolum = document.querySelector('.wp-manga-chapter > a');
+                if (!sonBolum) return null;
+                return {
+                    link: sonBolum.href,
+                    baslik: sonBolum.innerText.trim()
+                };
+            });
+
+            if (data) {
+                let tamLink = data.link;
+                if (tamLink && !tamLink.startsWith('http')) {
+                    tamLink = `https://sadscans.net${tamLink}`;
+                }
+
+                if (tamLink && tamLink !== sonMangaLinki && sonMangaLinki !== "") {
+                    sonMangaLinki = tamLink;
+                    const duyuruKanali = client.channels.cache.get('1453839041886814219');
+                    if (duyuruKanali) {
+                        const embed = createEmbed('Yeni Bölüm Çıktı! 🎉', `**${data.baslik}** okumaya hazır!\n\n[Hemen Okumak İçin Tıkla](${tamLink})`, 0x5865F2);
+                        await duyuruKanali.send({ content: '<@&1471571169105809686>', embeds: [embed] });
+                    }
+                } else if (sonMangaLinki === "" && tamLink) {
+                    sonMangaLinki = tamLink;
+                }
             }
-        });
-        const $ = cheerio.load(response.data);
-
-        const sonBolum = $('a[href*="/reader/"]').first();
-        const link = sonBolum.attr('href');
-        const baslik = sonBolum.find('h3').text().trim();
-
-        let tamLink = link;
-        if (link && !link.startsWith('http')) {
-            tamLink = `https://sadscans.net${link}`;
-        }
-
-        if (tamLink && tamLink !== sonMangaLinki && sonMangaLinki !== "") {
-            sonMangaLinki = tamLink;
-
-            const duyuruKanali = client.channels.cache.get('1453839041886814219');
-            if (duyuruKanali) {
-                const embed = createEmbed('Yeni Bölüm Çıktı! 🎉', `**${baslik}** okumaya hazır!\n\n[Hemen Okumak İçin Tıkla](${tamLink})`, 0x5865F2);
-                await duyuruKanali.send({ content: '<@&1471571169105809686>', embeds: [embed] });
+        } catch (error) {
+            console.error("Manga Hata:", error.message);
+        } finally {
+            if (browser) {
+                await browser.close();
             }
-        } else if (sonMangaLinki === "" && tamLink) {
-            sonMangaLinki = tamLink;
         }
-    } catch (error) {
-        console.error("Manga Hata:", error.message);
-    }
-}, 60000);
+    }, 60000);
 
     const voiceChannel = client.channels.cache.get(BOT_VOICE_CHANNEL_ID);
     if (voiceChannel) {
