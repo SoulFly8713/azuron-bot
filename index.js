@@ -7,6 +7,8 @@ const {
 } = require('discord.js');
 const { joinVoiceChannel, getVoiceConnection } = require('@discordjs/voice');
 const express = require("express");
+const axios = require('axios');
+const cheerio = require('cheerio');
 
 const app = express();
 
@@ -47,6 +49,9 @@ const pendingApplications = new Set();
 const autoRoles = new Map();
 const customRoleSetup = new Map();
 const userCustomRoles = new Map();
+
+let sonMangaLinki = "";
+const TAKIP_EDILECEK_MANGA = 'https://sadscans.net/series/chainsaw-man';
 
 function createEmbed(title, description, color = 0x5865F2) {
     const embed = new EmbedBuilder()
@@ -118,6 +123,35 @@ client.on('clientReady', async () => {
         type: ActivityType.Streaming,
         url: 'https://www.twitch.tv/discord'
     });
+
+    setInterval(async () => {
+        try {
+            const response = await axios.get(TAKIP_EDILECEK_MANGA);
+            const $ = cheerio.load(response.data);
+
+            const sonBolum = $('a[href*="/reader/"]').first();
+            const link = sonBolum.attr('href');
+            const baslik = sonBolum.find('h3').text().trim();
+
+            let tamLink = link;
+            if (link && !link.startsWith('http')) {
+                tamLink = `https://sadscans.net${link}`;
+            }
+
+            if (tamLink && tamLink !== sonMangaLinki && sonMangaLinki !== "") {
+                sonMangaLinki = tamLink;
+
+                const duyuruKanali = client.channels.cache.get('1453839041886814219');
+                if (duyuruKanali) {
+                    const embed = createEmbed('Yeni Bölüm Çıktı! 🎉', `**${baslik}** okumaya hazır!\n\n[Hemen Okumak İçin Tıkla](${tamLink})`, 0x5865F2);
+                    await duyuruKanali.send({ content: '<@&1475899021406244945>', embeds: [embed] });
+                }
+            } else if (sonMangaLinki === "" && tamLink) {
+                sonMangaLinki = tamLink;
+            }
+        } catch (error) {
+        }
+    }, 60000);
 
     const voiceChannel = client.channels.cache.get(BOT_VOICE_CHANNEL_ID);
     if (voiceChannel) {
@@ -376,22 +410,23 @@ client.on('messageCreate', async message => {
         }
     }
     
-const lowerContent = message.content.toLowerCase();
+    const lowerContent = message.content.toLowerCase();
 
-const otoYanitlar = {
-    'sa': 'Aleykümselam, hoş geldin!',
-    'selamünaleyküm': 'Aleykümselam, hoş geldin!',
-    'selam': 'Selam, hoş geldin!',
-    'merhaba': 'Merhaba! Nasılsın?',
-    'günaydın': 'Günaydın!',
-    'iyi geceler': 'İyi geceler!',
+    const otoYanitlar = {
+        'sa': 'Aleykümselam, hoş geldin!',
+        'selamünaleyküm': 'Aleykümselam, hoş geldin!',
+        'selam': 'Selam, hoş geldin!',
+        'merhaba': 'Merhaba! Nasılsın?',
+        'günaydın': 'Günaydın!',
+        'iyi geceler': 'İyi geceler!',
+        
+    };
+
+    if (otoYanitlar[lowerContent]) {
+        return message.reply(otoYanitlar[lowerContent]);
+    }
     
-};
-
-if (otoYanitlar[lowerContent]) {
-    return message.reply(otoYanitlar[lowerContent]);
-}
-   if (linkProtection.has(message.guild.id)) {
+    if (linkProtection.has(message.guild.id)) {
         if (message.member.permissions.has(PermissionsBitField.Flags.Administrator)) return;
         
         const discordInviteRegex = /(?:https?:\/\/)?(?:www\.)?(?:discord\.gg\/|discord(?:app)?\.com\/invite\/)([a-zA-Z0-9-]+)/gi;
