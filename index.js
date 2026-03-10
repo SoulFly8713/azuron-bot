@@ -50,7 +50,7 @@ const autoRoles = new Map();
 const customRoleSetup = new Map();
 const userCustomRoles = new Map();
 
-let sonMangaLinki = "";
+let sonMangaLinki = "test_ediyorum ";
 const TAKIP_EDILECEK_MANGA = 'https://sadscans.net/series/chainsaw-man';
 
 function createEmbed(title, description, color = 0x5865F2) {
@@ -124,7 +124,7 @@ client.on('clientReady', async () => {
         url: 'https://www.twitch.tv/discord'
     });
 
-    setInterval(async () => {
+   setInterval(async () => {
         try {
             const response = await axios.get(TAKIP_EDILECEK_MANGA);
             const $ = cheerio.load(response.data);
@@ -144,14 +144,14 @@ client.on('clientReady', async () => {
                 const duyuruKanali = client.channels.cache.get('1453839041886814219');
                 if (duyuruKanali) {
                     const embed = createEmbed('Yeni Bölüm Çıktı! 🎉', `**${baslik}** okumaya hazır!\n\n[Hemen Okumak İçin Tıkla](${tamLink})`, 0x5865F2);
-                    await duyuruKanali.send({ content: '<@&1475899021406244945>', embeds: [embed] });
+                    await duyuruKanali.send({ content: '', embeds: [embed] });
                 }
             } else if (sonMangaLinki === "" && tamLink) {
                 sonMangaLinki = tamLink;
             }
         } catch (error) {
         }
-    }, 60000);
+    }, 5000);
 
     const voiceChannel = client.channels.cache.get(BOT_VOICE_CHANNEL_ID);
     if (voiceChannel) {
