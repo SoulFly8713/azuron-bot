@@ -7,10 +7,6 @@ const {
 } = require('discord.js');
 const { joinVoiceChannel, getVoiceConnection } = require('@discordjs/voice');
 const express = require("express");
-const puppeteer = require('puppeteer-extra');
-const StealthPlugin = require('puppeteer-extra-plugin-stealth');
-
-puppeteer.use(StealthPlugin());
 
 const app = express();
 
@@ -29,7 +25,8 @@ const client = new Client({
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildMembers,
         GatewayIntentBits.GuildVoiceStates,
-        GatewayIntentBits.GuildModeration
+        GatewayIntentBits.GuildModeration,
+        GatewayIntentBits.GuildInvites
     ],
     partials: [Partials.Channel]
 });
@@ -43,6 +40,7 @@ const WELCOME_CHANNEL_ID = '1471564344578932829';
 const BOT_VOICE_CHANNEL_ID = '1473737542166774042';
 const TICKET_STAFF_ROLE_ID = '1464184391881457704';
 const TARGET_ROLE_ID = '1473029465587323076';
+const LEAVE_LOG_CHANNEL_ID = '1470356769653133368';
 
 const linkProtection = new Set();
 const deleteTimers = new Map();
@@ -52,8 +50,8 @@ const autoRoles = new Map();
 const customRoleSetup = new Map();
 const userCustomRoles = new Map();
 
-let sonMangaLinki = "";
-const TAKIP_EDILECEK_MANGA = 'https://sadscans.net/series/chainsaw-man';
+const guildInvites = new Map();
+const userInvites = new Map();
 
 function createEmbed(title, description, color = 0x5865F2) {
     const embed = new EmbedBuilder()
@@ -126,55 +124,12 @@ client.on('clientReady', async () => {
         url: 'https://www.twitch.tv/discord'
     });
 
-    setInterval(async () => {
-        let browser;
+    client.guilds.cache.forEach(async guild => {
         try {
-            browser = await puppeteer.launch({
-                headless: true,
-                args: ['--no-sandbox', '--disable-setuid-sandbox']
-            });
-            const page = await browser.newPage();
-            await page.setViewport({ width: 1920, height: 1080 });
-            
-            await page.goto(TAKIP_EDILECEK_MANGA, {
-                waitUntil: 'domcontentloaded',
-                timeout: 60000
-            });
-
-            const data = await page.evaluate(() => {
-                const sonBolum = document.querySelector('.wp-manga-chapter > a');
-                if (!sonBolum) return null;
-                return {
-                    link: sonBolum.href,
-                    baslik: sonBolum.innerText.trim()
-                };
-            });
-
-            if (data) {
-                let tamLink = data.link;
-                if (tamLink && !tamLink.startsWith('http')) {
-                    tamLink = `https://sadscans.net${tamLink}`;
-                }
-
-                if (tamLink && tamLink !== sonMangaLinki && sonMangaLinki !== "") {
-                    sonMangaLinki = tamLink;
-                    const duyuruKanali = client.channels.cache.get('1453839041886814219');
-                    if (duyuruKanali) {
-                        const embed = createEmbed('Yeni Bölüm Çıktı! 🎉', `**${data.baslik}** okumaya hazır!\n\n[Hemen Okumak İçin Tıkla](${tamLink})`, 0x5865F2);
-                        await duyuruKanali.send({ content: '<@&1471571169105809686>', embeds: [embed] });
-                    }
-                } else if (sonMangaLinki === "" && tamLink) {
-                    sonMangaLinki = tamLink;
-                }
-            }
-        } catch (error) {
-            console.error("Manga Hata:", error.message);
-        } finally {
-            if (browser) {
-                await browser.close();
-            }
-        }
-    }, 60000);
+            const firstInvites = await guild.invites.fetch();
+            guildInvites.set(guild.id, new Map(firstInvites.map(invite => [invite.code, invite.uses])));
+        } catch (error) {}
+    });
 
     const voiceChannel = client.channels.cache.get(BOT_VOICE_CHANNEL_ID);
     if (voiceChannel) {
@@ -300,7 +255,35 @@ client.on('clientReady', async () => {
     } catch (error) {}
 });
 
+client.on('inviteCreate', invite => {
+    const invites = guildInvites.get(invite.guild.id) || new Map();
+    invites.set(invite.code, invite.uses);
+    guildInvites.set(invite.guild.id, invites);
+});
+
+client.on('inviteDelete', invite => {
+    const invites = guildInvites.get(invite.guild.id) || new Map();
+    invites.delete(invite.code);
+    guildInvites.set(invite.guild.id, invites);
+});
+
 client.on('guildMemberAdd', async member => {
+    try {
+        const newInvites = await member.guild.invites.fetch();
+        const oldInvites = guildInvites.get(member.guild.id) || new Map();
+        
+        const invite = newInvites.find(i => {
+            const oldUses = oldInvites.get(i.code) || 0;
+            return i.uses > oldUses;
+        });
+
+        if (invite && invite.inviter) {
+            userInvites.set(member.id, invite.inviter.id);
+        }
+
+        guildInvites.set(member.guild.id, new Map(newInvites.map(i => [i.code, i.uses])));
+    } catch (error) {}
+
     const channel = member.guild.channels.cache.get(WELCOME_CHANNEL_ID);
     if (channel) {
         channel.send(`${member} Hoş geldin! Seninle birlikte **${member.guild.memberCount}** kişiyiz!`);
@@ -340,9 +323,21 @@ client.on('guildBanRemove', async ban => {
 client.on('guildMemberRemove', async member => {
     const fetchedLogs = await member.guild.fetchAuditLogs({ limit: 1, type: AuditLogEvent.MemberKick });
     const kickLog = fetchedLogs.entries.first();
+    
+    const inviterId = userInvites.get(member.id);
+    const inviterText = inviterId ? `<@${inviterId}>` : 'Bilinmiyor';
+
     if (kickLog && kickLog.target.id === member.id && kickLog.createdAt > Date.now() - 5000) {
         await sendLog(member.guild, '🚪 Kullanıcı Atıldı', `**Kullanıcı:** ${member.user.tag}\n**Yetkili:** ${kickLog.executor.tag}\n**Sebep:** ${kickLog.reason || 'Belirtilmedi'}`, 0xE67E22);
+    } else {
+        const leaveChannel = member.guild.channels.cache.get(LEAVE_LOG_CHANNEL_ID);
+        if (leaveChannel) {
+            const leaveEmbed = createEmbed('📤 Üye Ayrıldı', `**Kullanıcı:** <@${member.id}> (${member.user.tag})\n**Davet Eden:** ${inviterText}`, 0xE74C3C);
+            await leaveChannel.send({ embeds: [leaveEmbed] }).catch(() => {});
+        }
     }
+    
+    userInvites.delete(member.id);
 });
 
 client.on('guildMemberUpdate', async (oldMember, newMember) => {
