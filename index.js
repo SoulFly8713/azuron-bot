@@ -447,34 +447,6 @@ client.on('messageCreate', async message => {
     if (otoYanitlar[lowerContent]) {
         return message.reply(otoYanitlar[lowerContent]);
     }
-
-    const mediaMatch = message.content.match(/https?:\/\/(www\.)?(tiktok\.com|instagram\.com|twitter\.com|x\.com)[^\s]*/i);
-    if (mediaMatch) {
-        let originalUrl = mediaMatch[0];
-        let fixedLink = originalUrl;
-        
-        fixedLink = fixedLink.replace(/tiktok\.com/ig, 'tnktok.com');
-        fixedLink = fixedLink.replace(/instagram\.com/ig, 'ddinstagram.com');
-        fixedLink = fixedLink.replace(/twitter\.com/ig, 'fxtwitter.com');
-        fixedLink = fixedLink.replace(/x\.com/ig, 'fxtwitter.com');
-
-        if (fixedLink !== originalUrl) {
-            const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder()
-                    .setLabel('Bilgi')
-                    .setEmoji('🌐')
-                    .setStyle(ButtonStyle.Link)
-                    .setURL(originalUrl),
-                new ButtonBuilder()
-                    .setCustomId(`del_media_${message.author.id}`)
-                    .setStyle(ButtonStyle.Danger)
-                    .setEmoji('🗑️')
-            );
-
-            await message.delete().catch(() => {});
-            await message.channel.send({ content: `<@${message.author.id}>:\n${fixedLink}`, components: [row] });
-        }
-    }
     
     if (linkProtection.has(message.guild.id)) {
         if (message.member.permissions.has(PermissionsBitField.Flags.Administrator)) return;
@@ -593,25 +565,37 @@ client.on('interactionCreate', async interaction => {
 
         if (commandName === 'medya') {
             let originalUrl = options.getString('link');
-            if (!originalUrl.startsWith('http')) {
-                originalUrl = 'https://' + originalUrl;
+            
+            let urlMatch = originalUrl.match(/https?:\/\/[^\s]+/i);
+            if (!urlMatch) {
+                if (!originalUrl.startsWith('http')) {
+                    originalUrl = 'https://' + originalUrl;
+                }
+            } else {
+                originalUrl = urlMatch[0];
             }
-            
-            let url = originalUrl;
-            
-            if (url.includes('tiktok.com')) {
-                url = url.replace(/tiktok\.com/ig, 'tnktok.com');
-            } else if (url.includes('instagram.com')) {
-                url = url.replace(/instagram\.com/ig, 'ddinstagram.com');
-            } else if (url.includes('twitter.com') || url.includes('x.com')) {
-                url = url.replace(/twitter\.com/ig, 'fxtwitter.com').replace(/x\.com/ig, 'fxtwitter.com');
+
+            let parsedUrl;
+            try {
+                parsedUrl = new URL(originalUrl);
+            } catch(e) {
+                return interaction.reply({ content: 'Lütfen geçerli bir URL girin.', flags: MessageFlags.Ephemeral });
+            }
+
+            if (parsedUrl.hostname.includes('tiktok.com')) {
+                parsedUrl.hostname = 'tnktok.com';
+            } else if (parsedUrl.hostname.includes('instagram.com')) {
+                parsedUrl.hostname = 'ddinstagram.com';
+                parsedUrl.search = '';
+            } else if (parsedUrl.hostname.includes('twitter.com') || parsedUrl.hostname.includes('x.com')) {
+                parsedUrl.hostname = 'fixupx.com';
             } else {
                 return interaction.reply({ content: 'Lütfen geçerli bir TikTok, Instagram veya X (Twitter) linki girin.', flags: MessageFlags.Ephemeral });
             }
 
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder()
-                    .setLabel('Info')
+                    .setLabel('Bilgi')
                     .setEmoji('🌐')
                     .setStyle(ButtonStyle.Link)
                     .setURL(originalUrl),
@@ -621,7 +605,7 @@ client.on('interactionCreate', async interaction => {
                     .setEmoji('🗑️')
             );
 
-            return interaction.reply({ content: url, components: [row] });
+            return interaction.reply({ content: parsedUrl.toString(), components: [row] });
         }
 
         if (commandName === 'sunucu-bilgi') {
