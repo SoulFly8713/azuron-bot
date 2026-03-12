@@ -448,17 +448,31 @@ client.on('messageCreate', async message => {
         return message.reply(otoYanitlar[lowerContent]);
     }
 
-    if (message.content.includes('tiktok.com') || message.content.includes('instagram.com') || message.content.includes('twitter.com') || message.content.includes('x.com')) {
-        let fixedLink = message.content;
+    const mediaMatch = message.content.match(/https?:\/\/(www\.)?(tiktok\.com|instagram\.com|twitter\.com|x\.com)[^\s]*/i);
+    if (mediaMatch) {
+        let originalUrl = mediaMatch[0];
+        let fixedLink = originalUrl;
         
-        fixedLink = fixedLink.replace(/tiktok\.com/g, 'tnktok.com');
-        fixedLink = fixedLink.replace(/instagram\.com/g, 'ddinstagram.com');
-        fixedLink = fixedLink.replace(/twitter\.com/g, 'fxtwitter.com');
-        fixedLink = fixedLink.replace(/x\.com/g, 'fxtwitter.com');
+        fixedLink = fixedLink.replace(/tiktok\.com/ig, 'tnktok.com');
+        fixedLink = fixedLink.replace(/instagram\.com/ig, 'ddinstagram.com');
+        fixedLink = fixedLink.replace(/twitter\.com/ig, 'fxtwitter.com');
+        fixedLink = fixedLink.replace(/x\.com/ig, 'fxtwitter.com');
 
-        if (fixedLink !== message.content) {
+        if (fixedLink !== originalUrl) {
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setLabel('Bilgi')
+                    .setEmoji('🌐')
+                    .setStyle(ButtonStyle.Link)
+                    .setURL(originalUrl),
+                new ButtonBuilder()
+                    .setCustomId(`del_media_${message.author.id}`)
+                    .setStyle(ButtonStyle.Danger)
+                    .setEmoji('🗑️')
+            );
+
             await message.delete().catch(() => {});
-            await message.channel.send({ content: `🎬 <@${message.author.id}> paylaştı:\n${fixedLink}` });
+            await message.channel.send({ content: `<@${message.author.id}>:\n${fixedLink}`, components: [row] });
         }
     }
     
@@ -578,19 +592,36 @@ client.on('interactionCreate', async interaction => {
         }
 
         if (commandName === 'medya') {
-            let url = options.getString('link');
+            let originalUrl = options.getString('link');
+            if (!originalUrl.startsWith('http')) {
+                originalUrl = 'https://' + originalUrl;
+            }
+            
+            let url = originalUrl;
             
             if (url.includes('tiktok.com')) {
-                url = url.replace(/tiktok\.com/g, 'tnktok.com');
+                url = url.replace(/tiktok\.com/ig, 'tnktok.com');
             } else if (url.includes('instagram.com')) {
-                url = url.replace(/instagram\.com/g, 'ddinstagram.com');
+                url = url.replace(/instagram\.com/ig, 'ddinstagram.com');
             } else if (url.includes('twitter.com') || url.includes('x.com')) {
-                url = url.replace(/twitter\.com/g, 'fxtwitter.com').replace(/x\.com/g, 'fxtwitter.com');
+                url = url.replace(/twitter\.com/ig, 'fxtwitter.com').replace(/x\.com/ig, 'fxtwitter.com');
             } else {
                 return interaction.reply({ content: 'Lütfen geçerli bir TikTok, Instagram veya X (Twitter) linki girin.', flags: MessageFlags.Ephemeral });
             }
 
-            return interaction.reply({ content: `🎬 <@${interaction.user.id}> paylaştı:\n${url}` });
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setLabel('Info')
+                    .setEmoji('🌐')
+                    .setStyle(ButtonStyle.Link)
+                    .setURL(originalUrl),
+                new ButtonBuilder()
+                    .setCustomId(`del_media_${interaction.user.id}`)
+                    .setStyle(ButtonStyle.Danger)
+                    .setEmoji('🗑️')
+            );
+
+            return interaction.reply({ content: url, components: [row] });
         }
 
         if (commandName === 'sunucu-bilgi') {
@@ -950,6 +981,16 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (interaction.isButton()) {
+        if (interaction.customId.startsWith('del_media_')) {
+            const ownerId = interaction.customId.replace('del_media_', '');
+            if (interaction.user.id === ownerId || interaction.member.permissions.has(PermissionsBitField.Flags.ManageMessages)) {
+                await interaction.message.delete().catch(() => {});
+            } else {
+                await interaction.reply({ content: 'Bu medyayı silmek için yetkiniz yok.', flags: MessageFlags.Ephemeral });
+            }
+            return;
+        }
+
         if (interaction.customId.startsWith('color_')) {
             const userId = interaction.user.id;
             if (!customRoleSetup.has(userId) || customRoleSetup.get(userId).step !== 'color') return;
