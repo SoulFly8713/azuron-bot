@@ -246,7 +246,11 @@ client.on('clientReady', async () => {
             .addUserOption(o => o.setName('kullanici').setDescription('Bilgisi alınacak kullanıcı').setRequired(false)),
         new SlashCommandBuilder()
             .setName('ping')
-            .setDescription('Botun gecikme süresini gösterir.')
+            .setDescription('Botun gecikme süresini gösterir.'),
+        new SlashCommandBuilder()
+            .setName('medya')
+            .setDescription('TikTok, Instagram veya X (Twitter) videosunu oynatır.')
+            .addStringOption(o => o.setName('link').setDescription('Video linki').setRequired(true))
     ];
 
     const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
@@ -443,6 +447,20 @@ client.on('messageCreate', async message => {
     if (otoYanitlar[lowerContent]) {
         return message.reply(otoYanitlar[lowerContent]);
     }
+
+    if (message.content.includes('tiktok.com') || message.content.includes('instagram.com') || message.content.includes('twitter.com') || message.content.includes('x.com')) {
+        let fixedLink = message.content;
+        
+        fixedLink = fixedLink.replace(/tiktok\.com/g, 'vxtiktok.com');
+        fixedLink = fixedLink.replace(/instagram\.com/g, 'ddinstagram.com');
+        fixedLink = fixedLink.replace(/twitter\.com/g, 'fxtwitter.com');
+        fixedLink = fixedLink.replace(/x\.com/g, 'fxtwitter.com');
+
+        if (fixedLink !== message.content) {
+            await message.delete().catch(() => {});
+            await message.channel.send({ content: `🎬 <@${message.author.id}> paylaştı:\n${fixedLink}` });
+        }
+    }
     
     if (linkProtection.has(message.guild.id)) {
         if (message.member.permissions.has(PermissionsBitField.Flags.Administrator)) return;
@@ -557,6 +575,22 @@ client.on('interactionCreate', async interaction => {
 
         if (commandName === 'ping') {
             return interaction.reply({ content: `🏓 ...pong! ${Math.round(client.ws.ping)} ms`, flags: MessageFlags.Ephemeral });
+        }
+
+        if (commandName === 'medya') {
+            let url = options.getString('link');
+            
+            if (url.includes('tiktok.com')) {
+                url = url.replace(/tiktok\.com/g, 'vxtiktok.com');
+            } else if (url.includes('instagram.com')) {
+                url = url.replace(/instagram\.com/g, 'ddinstagram.com');
+            } else if (url.includes('twitter.com') || url.includes('x.com')) {
+                url = url.replace(/twitter\.com/g, 'fxtwitter.com').replace(/x\.com/g, 'fxtwitter.com');
+            } else {
+                return interaction.reply({ content: 'Lütfen geçerli bir TikTok, Instagram veya X (Twitter) linki girin.', flags: MessageFlags.Ephemeral });
+            }
+
+            return interaction.reply({ content: `🎬 <@${interaction.user.id}> paylaştı:\n${url}` });
         }
 
         if (commandName === 'sunucu-bilgi') {
@@ -724,7 +758,7 @@ client.on('interactionCreate', async interaction => {
         if (commandName === 'yardım') {
             const helpEmbed = createEmbed('📑 Komut Listesi', 'Aşağıda botun kullanılabilir komutları listelenmiştir.', 0x5865F2)
                 .addFields(
-                    { name: '🛠️ Genel Komutlar', value: '`/yardım`, `/öneri`, `/ping`, `/sunucu-bilgi`, `/kullanıcı-bilgi`' },
+                    { name: '🛠️ Genel Komutlar', value: '`/yardım`, `/öneri`, `/ping`, `/sunucu-bilgi`, `/kullanıcı-bilgi`, `/medya`' },
                     { name: '🛡️ Yönetici Komutları', value: '`/mod-form`, `/ses-panel`, `/bilet olustur`, `/link-engel`, `/kick`, `/ban`, `/mute`, `/unmute`, `/sil`, `/rol ayarla`' },
                     { name: '🚀 Takviyeci Komutları', value: '`/özel rol-ayarla`, `/özel rol-sil`' },
                     { name: '🔊 Ses Sistemi', value: 'Özel oda kurmak için **Oda Oluştur** kanalına girmeniz yeterlidir.' },
