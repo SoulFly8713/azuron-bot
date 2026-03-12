@@ -451,7 +451,7 @@ client.on('messageCreate', async message => {
     if (message.content.includes('tiktok.com') || message.content.includes('instagram.com') || message.content.includes('twitter.com') || message.content.includes('x.com')) {
         let fixedLink = message.content;
         
-        fixedLink = fixedLink.replace(/tiktok\.com/g, 'vxtiktok.com');
+        fixedLink = fixedLink.replace(/tiktok\.com/g, 'tnktok.com');
         fixedLink = fixedLink.replace(/instagram\.com/g, 'ddinstagram.com');
         fixedLink = fixedLink.replace(/twitter\.com/g, 'fxtwitter.com');
         fixedLink = fixedLink.replace(/x\.com/g, 'fxtwitter.com');
@@ -581,7 +581,7 @@ client.on('interactionCreate', async interaction => {
             let url = options.getString('link');
             
             if (url.includes('tiktok.com')) {
-                url = url.replace(/tiktok\.com/g, 'vxtiktok.com');
+                url = url.replace(/tiktok\.com/g, 'tnktok.com');
             } else if (url.includes('instagram.com')) {
                 url = url.replace(/instagram\.com/g, 'ddinstagram.com');
             } else if (url.includes('twitter.com') || url.includes('x.com')) {
