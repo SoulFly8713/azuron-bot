@@ -249,7 +249,7 @@ client.on('clientReady', async () => {
             .setDescription('Botun gecikme süresini gösterir.'),
         new SlashCommandBuilder()
             .setName('medya')
-            .setDescription('TikTok, Instagram veya X (Twitter) videosunu oynatır.')
+            .setDescription('TikTok videosunu oynatır.')
             .addStringOption(o => o.setName('link').setDescription('Video linki').setRequired(true))
     ];
 
@@ -584,13 +584,8 @@ client.on('interactionCreate', async interaction => {
 
             if (parsedUrl.hostname.includes('tiktok.com')) {
                 parsedUrl.hostname = 'tnktok.com';
-            } else if (parsedUrl.hostname.includes('instagram.com')) {
-                parsedUrl.hostname = 'ddinstagram.com';
-                parsedUrl.search = '';
-            } else if (parsedUrl.hostname.includes('twitter.com') || parsedUrl.hostname.includes('x.com')) {
-                parsedUrl.hostname = 'fixupx.com';
             } else {
-                return interaction.reply({ content: 'Lütfen geçerli bir TikTok, Instagram veya X (Twitter) linki girin.', flags: MessageFlags.Ephemeral });
+                return interaction.reply({ content: 'Lütfen geçerli bir TikTok linki girin.', flags: MessageFlags.Ephemeral });
             }
 
             const row = new ActionRowBuilder().addComponents(
