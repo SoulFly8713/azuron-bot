@@ -1760,6 +1760,16 @@ async function getGeneratorChannelId(guild) {
     return c ? c.id : null;
 }
 
-client.login(process.env.TOKEN).catch(err => {
-    console.error("Baglanti hatasi:", err);
+console.log("Discord'a baglanti istegi gonderiliyor...");
+
+client.once('ready', () => {
+    console.log(`Bot basariyla aktif oldu: ${client.user.tag}`);
 });
+
+client.login(process.env.TOKEN)
+    .then(() => {
+        console.log("Discord token'i kabul etti!");
+    })
+    .catch(err => {
+        console.error("Discord'a baglanirken kritik hata:", err);
+    });
