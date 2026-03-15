@@ -1760,4 +1760,6 @@ async function getGeneratorChannelId(guild) {
     return c ? c.id : null;
 }
 
-client.login(process.env.TOKEN);
+client.login(process.env.TOKEN).catch(err => {
+    console.error("Baglanti hatasi:", err);
+});
