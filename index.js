@@ -1678,7 +1678,8 @@ client.on('interactionCreate', async interaction => {
 
             const msg = await interaction.reply({ embeds: [embed], components: [row], fetchReply: true });
 
-            activeGiveaways.set(msg.id, {
+           activeGiveaways.set(msg.id, {
+                messageId: msg.id,
                 channelId: interaction.channel.id,
                 participants: new Set(),
                 winnersCount: winnersCount,
