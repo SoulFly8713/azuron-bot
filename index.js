@@ -49,6 +49,7 @@ const pendingApplications = new Set();
 const autoRoles = new Map();
 const customRoleSetup = new Map();
 const userCustomRoles = new Map();
+const activeGiveaways = new Map();
 
 const guildInvites = new Map();
 const userInvites = new Map();
@@ -157,6 +158,10 @@ client.on('clientReady', async () => {
     }, 60000);
 
     const commands = [
+        new SlashCommandBuilder()
+            .setName('çekiliş')
+            .setDescription('Sunucuda yeni bir çekiliş başlatır.')
+            .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator),
         new SlashCommandBuilder()
             .setName('özel')
             .setDescription('Sunucu takviyecilerine özel komutlar.')
@@ -559,6 +564,24 @@ client.on('interactionCreate', async interaction => {
     if (interaction.isChatInputCommand()) {
         const { commandName, options, member, guild } = interaction;
 
+        if (commandName === 'çekiliş') {
+            const modal = new ModalBuilder().setCustomId('modal_giveaway').setTitle('Çekiliş Başlat');
+
+            const titleInput = new TextInputBuilder().setCustomId('gw_title').setLabel('Başlık').setStyle(TextInputStyle.Short).setRequired(true);
+            const descInput = new TextInputBuilder().setCustomId('gw_desc').setLabel('Açıklama').setStyle(TextInputStyle.Paragraph).setRequired(true);
+            const winnersInput = new TextInputBuilder().setCustomId('gw_winners').setLabel('Kazanan Sayısı').setStyle(TextInputStyle.Short).setRequired(true);
+            const durationInput = new TextInputBuilder().setCustomId('gw_duration').setLabel('Süre (Gün)').setStyle(TextInputStyle.Short).setRequired(true);
+
+            modal.addComponents(
+                new ActionRowBuilder().addComponents(titleInput),
+                new ActionRowBuilder().addComponents(descInput),
+                new ActionRowBuilder().addComponents(winnersInput),
+                new ActionRowBuilder().addComponents(durationInput)
+            );
+
+            await interaction.showModal(modal);
+        }
+
         if (commandName === 'ping') {
             return interaction.reply({ content: `🏓 ...pong! ${Math.round(client.ws.ping)} ms`, flags: MessageFlags.Ephemeral });
         }
@@ -769,7 +792,7 @@ client.on('interactionCreate', async interaction => {
             const helpEmbed = createEmbed('📑 Komut Listesi', 'Aşağıda botun kullanılabilir komutları listelenmiştir.', 0x5865F2)
                 .addFields(
                     { name: '🛠️ Genel Komutlar', value: '`/yardım`, `/öneri`, `/ping`, `/sunucu-bilgi`, `/kullanıcı-bilgi`, `/medya`' },
-                    { name: '🛡️ Yönetici Komutları', value: '`/mod-form`, `/ses-panel`, `/bilet olustur`, `/link-engel`, `/kick`, `/ban`, `/mute`, `/unmute`, `/sil`, `/rol ayarla`' },
+                    { name: '🛡️ Yönetici Komutları', value: '`/çekiliş`, `/mod-form`, `/ses-panel`, `/bilet olustur`, `/link-engel`, `/kick`, `/ban`, `/mute`, `/unmute`, `/sil`, `/rol ayarla`' },
                     { name: '🚀 Takviyeci Komutları', value: '`/özel rol-ayarla`, `/özel rol-sil`' },
                     { name: '🔊 Ses Sistemi', value: 'Özel oda kurmak için **Oda Oluştur** kanalına girmeniz yeterlidir.' },
                     { name: '🎫 Bilet Sistemi', value: '**bilet-oluştur** kanalındaki menüden destek bileti açabilirsiniz.' }
@@ -960,6 +983,21 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (interaction.isButton()) {
+        if (interaction.customId === 'btn_gw_join') {
+            const gw = activeGiveaways.get(interaction.message.id);
+            if (!gw) {
+                return interaction.reply({ content: 'Bu çekiliş artık aktif değil veya sona ermiş.', flags: MessageFlags.Ephemeral });
+            }
+
+            if (gw.participants.has(interaction.user.id)) {
+                gw.participants.delete(interaction.user.id);
+                return interaction.reply({ content: 'Çekilişten başarıyla ayrıldın.', flags: MessageFlags.Ephemeral });
+            } else {
+                gw.participants.add(interaction.user.id);
+                return interaction.reply({ content: 'Çekilişe başarıyla katıldın! 🎉', flags: MessageFlags.Ephemeral });
+            }
+        }
+
         if (interaction.customId.startsWith('del_media_')) {
             const ownerId = interaction.customId.replace('del_media_', '');
             if (interaction.user.id === ownerId || interaction.member.permissions.has(PermissionsBitField.Flags.ManageMessages)) {
@@ -1377,6 +1415,84 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (interaction.isModalSubmit()) {
+        if (interaction.customId === 'modal_giveaway') {
+            const title = interaction.fields.getTextInputValue('gw_title');
+            const desc = interaction.fields.getTextInputValue('gw_desc');
+            const winnersCount = parseInt(interaction.fields.getTextInputValue('gw_winners'));
+            const durationDays = parseFloat(interaction.fields.getTextInputValue('gw_duration'));
+
+            if (isNaN(winnersCount) || winnersCount < 1 || isNaN(durationDays) || durationDays <= 0) {
+                return interaction.reply({ content: 'Lütfen sayısal değerleri geçerli bir şekilde girin.', flags: MessageFlags.Ephemeral });
+            }
+
+            const durationMs = durationDays * 24 * 60 * 60 * 1000;
+            const endsAt = Date.now() + durationMs;
+
+            const embed = new EmbedBuilder()
+                .setTitle(`🎉 ${title}`)
+                .setDescription(`${desc}\n\n**Kazanan Sayısı:** ${winnersCount}\n**Bitiş:** <t:${Math.floor(endsAt / 1000)}:R>\n**Başlatan:** <@${interaction.user.id}>`)
+                .setColor(0x5865F2)
+                .setTimestamp(endsAt);
+
+            const joinButton = new ButtonBuilder()
+                .setCustomId('btn_gw_join')
+                .setLabel('Katıl')
+                .setStyle(ButtonStyle.Primary)
+                .setEmoji('🎉');
+
+            const row = new ActionRowBuilder().addComponents(joinButton);
+
+            const msg = await interaction.reply({ embeds: [embed], components: [row], fetchReply: true });
+
+            activeGiveaways.set(msg.id, {
+                participants: new Set(),
+                winnersCount: winnersCount,
+                title: title,
+                desc: desc,
+                host: interaction.user.id
+            });
+
+            setTimeout(async () => {
+                const gw = activeGiveaways.get(msg.id);
+                if (!gw) return;
+
+                const participantsArray = Array.from(gw.participants);
+                let winnersText = '';
+
+                if (participantsArray.length === 0) {
+                    winnersText = 'Yeterli katılım olmadığı için çekiliş iptal edildi.';
+                } else {
+                    const winners = [];
+                    const drawCount = Math.min(gw.winnersCount, participantsArray.length);
+                    for (let i = 0; i < drawCount; i++) {
+                        const randomIndex = Math.floor(Math.random() * participantsArray.length);
+                        winners.push(`<@${participantsArray.splice(randomIndex, 1)[0]}>`);
+                    }
+                    winnersText = `**Kazananlar:** ${winners.join(', ')}`;
+                }
+
+                const endEmbed = new EmbedBuilder()
+                    .setTitle(`🎉 ${gw.title} (Sona Erdi)`)
+                    .setDescription(`${gw.desc}\n\n${winnersText}\n**Başlatan:** <@${gw.host}>`)
+                    .setColor(0x2B2D31);
+
+                const disabledButton = new ButtonBuilder()
+                    .setCustomId('btn_gw_join')
+                    .setLabel(`Katılımcı: ${gw.participants.size}`)
+                    .setStyle(ButtonStyle.Secondary)
+                    .setEmoji('🎉')
+                    .setDisabled(true);
+
+                await msg.edit({ embeds: [endEmbed], components: [new ActionRowBuilder().addComponents(disabledButton)] });
+
+                if (gw.participants.size > 0) {
+                    await msg.channel.send(`Tebrikler ${winnersText}! **${gw.title}** çekilişini kazandınız!`);
+                }
+
+                activeGiveaways.delete(msg.id);
+            }, durationMs);
+        }
+
         if (interaction.customId === 'modal_mod_part1') {
             const a1 = interaction.fields.getTextInputValue('q1');
             const a2 = interaction.fields.getTextInputValue('q2');
