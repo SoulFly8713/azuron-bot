@@ -584,6 +584,11 @@ client.on('messageCreate', async message => {
         return message.reply('https://tenor.com/view/power-chainsaw-man-chain-saw-chain-saw-man-gif-10320499736909693459');
     }
 
+            if (message.author.id === '1201251856010203227' && message.mentions.has(client.user.id)) {
+        return message.reply('https://tenor.com/view/jujutsu-kaisen-jjk-toji-gif-17454186276189849897');
+    }
+
+
     if (customRoleSetup.has(message.author.id)) {
         const setupData = customRoleSetup.get(message.author.id);
         
