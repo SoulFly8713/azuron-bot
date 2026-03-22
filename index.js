@@ -62,6 +62,11 @@ const Giveaway = sequelize.define('Giveaway', {
     }
 });
 
+const CustomMessage = sequelize.define('CustomMessage', {
+    userId: { type: DataTypes.STRING, primaryKey: true },
+    replyText: { type: DataTypes.TEXT, allowNull: false }
+});
+
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -94,6 +99,7 @@ const autoRoles = new Map();
 const customRoleSetup = new Map();
 const userCustomRoles = new Map();
 const activeGiveaways = new Map();
+const customUserMessages = new Map();
 
 const guildInvites = new Map();
 const userInvites = new Map();
@@ -279,6 +285,9 @@ client.on('clientReady', async () => {
             const roles = await CustomRole.findAll();
             roles.forEach(r => userCustomRoles.set(r.userId, r.roleId));
 
+            const customMsgs = await CustomMessage.findAll();
+            customMsgs.forEach(m => customUserMessages.set(m.userId, m.replyText));
+
             const giveaways = await Giveaway.findAll({ where: { status: 'active' } });
             const now = Date.now();
             giveaways.forEach(g => {
@@ -354,6 +363,17 @@ client.on('clientReady', async () => {
             .addSubcommand(s => s
                 .setName('rol-sil')
                 .setDescription('Oluşturduğunuz özel rolü siler.')
+            )
+            .addSubcommand(s => s
+                .setName('mesaj-ayarla')
+                .setDescription('Belirtilen kullanıcı bota etiket attığında verilecek özel yanıtı ayarlar.')
+                .addUserOption(o => o.setName('kullanici').setDescription('Kullanıcı').setRequired(true))
+                .addStringOption(o => o.setName('mesaj').setDescription('Verilecek mesaj/link').setRequired(true))
+            )
+            .addSubcommand(s => s
+                .setName('mesaj-sil')
+                .setDescription('Kullanıcının özel mesajını sistemden siler.')
+                .addUserOption(o => o.setName('kullanici').setDescription('Kullanıcı').setRequired(true))
             ),
         new SlashCommandBuilder()
             .setName('rol')
@@ -576,18 +596,9 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
 client.on('messageCreate', async message => {
     if (message.author.bot || !message.guild) return;
 
-    if (message.author.id === '1065161665009700895' && message.mentions.has(client.user.id)) {
-        return message.reply('https://tenor.com/view/hmph-hmph-anime-tsundere-gif-25758864');
+    if (message.mentions.has(client.user.id) && customUserMessages.has(message.author.id)) {
+        return message.reply(customUserMessages.get(message.author.id));
     }
-    
-        if (message.author.id === '1255226518624272434' && message.mentions.has(client.user.id)) {
-        return message.reply('https://tenor.com/view/power-chainsaw-man-chain-saw-chain-saw-man-gif-10320499736909693459');
-    }
-
-            if (message.author.id === '1201251856010203227' && message.mentions.has(client.user.id)) {
-        return message.reply('https://tenor.com/view/jujutsu-kaisen-jjk-toji-gif-17454186276189849897');
-    }
-
 
     if (customRoleSetup.has(message.author.id)) {
         const setupData = customRoleSetup.get(message.author.id);
@@ -902,6 +913,38 @@ client.on('interactionCreate', async interaction => {
 
         if (commandName === 'özel') {
             const sub = options.getSubcommand();
+            
+            if (sub === 'mesaj-ayarla') {
+                if (!member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+                    return interaction.reply({ embeds: [createErrorEmbed('Bu komutu sadece yöneticiler kullanabilir.')], flags: MessageFlags.Ephemeral });
+                }
+
+                const targetUser = options.getUser('kullanici');
+                const replyMsg = options.getString('mesaj');
+
+                await CustomMessage.upsert({ userId: targetUser.id, replyText: replyMsg });
+                customUserMessages.set(targetUser.id, replyMsg);
+
+                return interaction.reply({ embeds: [createEmbed('Özel Mesaj Ayarlandı', `<@${targetUser.id}> bota etiket attığında artık şu yanıt verilecek:\n\n${replyMsg}`, 0x2ECC71)], flags: MessageFlags.Ephemeral });
+            }
+
+            if (sub === 'mesaj-sil') {
+                if (!member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+                    return interaction.reply({ embeds: [createErrorEmbed('Bu komutu sadece yöneticiler kullanabilir.')], flags: MessageFlags.Ephemeral });
+                }
+
+                const targetUser = options.getUser('kullanici');
+
+                if (!customUserMessages.has(targetUser.id)) {
+                    return interaction.reply({ embeds: [createErrorEmbed('Bu kullanıcının sistemde kayıtlı özel bir mesajı bulunmuyor.')], flags: MessageFlags.Ephemeral });
+                }
+
+                await CustomMessage.destroy({ where: { userId: targetUser.id } });
+                customUserMessages.delete(targetUser.id);
+
+                return interaction.reply({ embeds: [createEmbed('Özel Mesaj Silindi', `<@${targetUser.id}> kullanıcısının özel mesajı sistemden kaldırıldı.`, 0x2ECC71)], flags: MessageFlags.Ephemeral });
+            }
+
             if (!member.premiumSince && !member.permissions.has(PermissionsBitField.Flags.Administrator)) {
                 return interaction.reply({ embeds: [createErrorEmbed('Bu komutu kullanabilmek için sunucuya takviye (boost) yapmanız gerekmektedir.')], flags: MessageFlags.Ephemeral });
             }
@@ -1034,7 +1077,7 @@ client.on('interactionCreate', async interaction => {
             const helpEmbed = createEmbed('📑 Komut Listesi', 'Aşağıda botun kullanılabilir komutları listelenmiştir.', 0x5865F2)
                 .addFields(
                     { name: '🛠️ Genel Komutlar', value: '`/yardım`, `/öneri`, `/ping`, `/sunucu-bilgi`, `/kullanıcı-bilgi`, `/medya`' },
-                    { name: '🛡️ Yönetici Komutları', value: '`/çekiliş`, `/yeniden-çek`, `/mod-form`, `/ses-panel`, `/bilet olustur`, `/link-engel`, `/kick`, `/ban`, `/mute`, `/unmute`, `/sil`, `/rol ayarla`' },
+                    { name: '🛡️ Yönetici Komutları', value: '`/çekiliş`, `/yeniden-çek`, `/mod-form`, `/ses-panel`, `/bilet olustur`, `/link-engel`, `/kick`, `/ban`, `/mute`, `/unmute`, `/sil`, `/rol ayarla`, `/özel mesaj-ayarla`, `/özel mesaj-sil`' },
                     { name: '🚀 Takviyeci Komutları', value: '`/özel rol-ayarla`, `/özel rol-sil`' },
                     { name: '🔊 Ses Sistemi', value: 'Özel oda kurmak için **Oda Oluştur** kanalına girmeniz yeterlidir.' },
                     { name: '🎫 Bilet Sistemi', value: '**bilet-oluştur** kanalındaki menüden destek bileti açabilirsiniz.' }
