@@ -49,6 +49,7 @@ const Giveaway = sequelize.define('Giveaway', {
     winnersCount: DataTypes.INTEGER,
     endsAt: DataTypes.BIGINT,
     host: DataTypes.STRING,
+    status: { type: DataTypes.STRING, defaultValue: 'active' },
     participants: {
         type: DataTypes.TEXT,
         get() {
@@ -255,7 +256,7 @@ async function endGiveaway(messageId) {
     }
 
     activeGiveaways.delete(messageId);
-    await Giveaway.destroy({ where: { messageId: messageId } }).catch(() => {});
+    await Giveaway.update({ status: 'ended' }, { where: { messageId: messageId } }).catch(() => {});
 }
 
 client.on('clientReady', async () => {
@@ -267,7 +268,7 @@ client.on('clientReady', async () => {
 
     if (process.env.DATABASE_URL) {
         try {
-            await sequelize.sync();
+            await sequelize.sync({ alter: true });
             
             const settings = await GuildSettings.findAll();
             settings.forEach(s => {
@@ -278,7 +279,7 @@ client.on('clientReady', async () => {
             const roles = await CustomRole.findAll();
             roles.forEach(r => userCustomRoles.set(r.userId, r.roleId));
 
-            const giveaways = await Giveaway.findAll();
+            const giveaways = await Giveaway.findAll({ where: { status: 'active' } });
             const now = Date.now();
             giveaways.forEach(g => {
                 activeGiveaways.set(g.messageId, {
@@ -337,6 +338,11 @@ client.on('clientReady', async () => {
         new SlashCommandBuilder()
             .setName('çekiliş')
             .setDescription('Sunucuda yeni bir çekiliş başlatır.')
+            .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator),
+        new SlashCommandBuilder()
+            .setName('yeniden-çek')
+            .setDescription('Sona ermiş bir çekiliş için yeni kazanan belirler.')
+            .addStringOption(o => o.setName('mesaj_id').setDescription('Çekiliş mesajının ID\'si').setRequired(true))
             .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator),
         new SlashCommandBuilder()
             .setName('özel')
@@ -523,6 +529,26 @@ client.on('guildMemberRemove', async member => {
     }
     
     userInvites.delete(member.id);
+
+    for (const [msgId, gw] of activeGiveaways.entries()) {
+        if (gw.participants.has(member.id)) {
+            gw.participants.delete(member.id);
+            Giveaway.update(
+                { participants: Array.from(gw.participants) },
+                { where: { messageId: msgId } }
+            ).catch(() => {});
+            
+            const channel = client.channels.cache.get(gw.channelId);
+            if (channel) {
+                const msg = await channel.messages.fetch(msgId).catch(() => null);
+                if (msg) {
+                    const joinBtn = new ButtonBuilder().setCustomId('btn_gw_join').setLabel(`🎉 ${gw.participants.size}`).setStyle(ButtonStyle.Primary);
+                    const partBtn = new ButtonBuilder().setCustomId('btn_gw_participants').setLabel('👥 Katılımcılar').setStyle(ButtonStyle.Secondary);
+                    msg.edit({ components: [new ActionRowBuilder().addComponents(joinBtn, partBtn)] }).catch(() => {});
+                }
+            }
+        }
+    }
 });
 
 client.on('guildMemberUpdate', async (oldMember, newMember) => {
@@ -757,6 +783,34 @@ client.on('interactionCreate', async interaction => {
             await interaction.showModal(modal);
         }
 
+        if (commandName === 'yeniden-çek') {
+            const messageId = options.getString('mesaj_id');
+            const gwData = await Giveaway.findOne({ where: { messageId: messageId, status: 'ended' } });
+            
+            if (!gwData) {
+                return interaction.reply({ content: 'Belirtilen ID ile sona ermiş bir çekiliş bulunamadı.', flags: MessageFlags.Ephemeral });
+            }
+
+            const participantsArray = gwData.participants;
+            if (!participantsArray || participantsArray.length === 0) {
+                return interaction.reply({ content: 'Bu çekilişe katılan kimse olmadığı için yeniden çekiliş yapılamaz.', flags: MessageFlags.Ephemeral });
+            }
+
+            const randomIndex = Math.floor(Math.random() * participantsArray.length);
+            const winner = `<@${participantsArray[randomIndex]}>`;
+
+            const channel = client.channels.cache.get(gwData.channelId);
+            if (channel) {
+                const msg = await channel.messages.fetch(messageId).catch(() => null);
+                if (msg) {
+                    await msg.reply({ content: `🎉 **Yeniden Çekiliş Sonucu:** Tebrikler ${winner}! **${gwData.title}** çekilişinin yeni kazananı oldun!` });
+                    return interaction.reply({ content: 'Yeniden çekiliş başarıyla yapıldı ve kanala gönderildi.', flags: MessageFlags.Ephemeral });
+                }
+            }
+            
+            return interaction.reply({ content: `Çekiliş mesajı bulunamadı ancak kazanan: ${winner}`, flags: MessageFlags.Ephemeral });
+        }
+
         if (commandName === 'ping') {
             return interaction.reply({ content: `🏓 ...pong! ${Math.round(client.ws.ping)} ms`, flags: MessageFlags.Ephemeral });
         }
@@ -971,7 +1025,7 @@ client.on('interactionCreate', async interaction => {
             const helpEmbed = createEmbed('📑 Komut Listesi', 'Aşağıda botun kullanılabilir komutları listelenmiştir.', 0x5865F2)
                 .addFields(
                     { name: '🛠️ Genel Komutlar', value: '`/yardım`, `/öneri`, `/ping`, `/sunucu-bilgi`, `/kullanıcı-bilgi`, `/medya`' },
-                    { name: '🛡️ Yönetici Komutları', value: '`/çekiliş`, `/mod-form`, `/ses-panel`, `/bilet olustur`, `/link-engel`, `/kick`, `/ban`, `/mute`, `/unmute`, `/sil`, `/rol ayarla`' },
+                    { name: '🛡️ Yönetici Komutları', value: '`/çekiliş`, `/yeniden-çek`, `/mod-form`, `/ses-panel`, `/bilet olustur`, `/link-engel`, `/kick`, `/ban`, `/mute`, `/unmute`, `/sil`, `/rol ayarla`' },
                     { name: '🚀 Takviyeci Komutları', value: '`/özel rol-ayarla`, `/özel rol-sil`' },
                     { name: '🔊 Ses Sistemi', value: 'Özel oda kurmak için **Oda Oluştur** kanalına girmeniz yeterlidir.' },
                     { name: '🎫 Bilet Sistemi', value: '**bilet-oluştur** kanalındaki menüden destek bileti açabilirsiniz.' }
@@ -1171,18 +1225,17 @@ client.on('interactionCreate', async interaction => {
             }
 
             if (gw.participants.has(interaction.user.id)) {
-                gw.participants.delete(interaction.user.id);
-                
-                await Giveaway.update(
-                    { participants: Array.from(gw.participants) },
-                    { where: { messageId: interaction.message.id } }
-                ).catch(() => {});
+                const leaveBtn = new ButtonBuilder()
+                    .setCustomId(`btn_gw_leave_${interaction.message.id}`)
+                    .setLabel('Çekilişten Ayrıl')
+                    .setStyle(ButtonStyle.Danger);
+                const row = new ActionRowBuilder().addComponents(leaveBtn);
 
-                const joinBtn = new ButtonBuilder().setCustomId('btn_gw_join').setLabel(`🎉 ${gw.participants.size}`).setStyle(ButtonStyle.Primary);
-                const partBtn = new ButtonBuilder().setCustomId('btn_gw_participants').setLabel('👥 Katılımcılar').setStyle(ButtonStyle.Secondary);
-                await interaction.message.edit({ components: [new ActionRowBuilder().addComponents(joinBtn, partBtn)] });
-
-                return interaction.reply({ content: 'Çekilişten başarıyla ayrıldın.', flags: MessageFlags.Ephemeral });
+                return interaction.reply({ 
+                    content: 'Zaten çekilişe katıldın. Çekilişten ayrılmak için "Çekilişten Ayrıl" tuşuna basınız.', 
+                    components: [row],
+                    flags: MessageFlags.Ephemeral 
+                });
             } else {
                 gw.participants.add(interaction.user.id);
 
@@ -1196,6 +1249,35 @@ client.on('interactionCreate', async interaction => {
                 await interaction.message.edit({ components: [new ActionRowBuilder().addComponents(joinBtn, partBtn)] });
 
                 return interaction.reply({ content: 'Çekilişe başarıyla katıldın! 🎉', flags: MessageFlags.Ephemeral });
+            }
+        }
+
+        if (interaction.customId.startsWith('btn_gw_leave_')) {
+            const msgId = interaction.customId.replace('btn_gw_leave_', '');
+            const gw = activeGiveaways.get(msgId);
+            if (!gw) return interaction.update({ content: 'Bu çekiliş artık aktif değil.', components: [] });
+
+            if (gw.participants.has(interaction.user.id)) {
+                gw.participants.delete(interaction.user.id);
+                
+                await Giveaway.update(
+                    { participants: Array.from(gw.participants) },
+                    { where: { messageId: msgId } }
+                ).catch(() => {});
+
+                const channel = client.channels.cache.get(gw.channelId);
+                if (channel) {
+                    const msg = await channel.messages.fetch(msgId).catch(() => null);
+                    if (msg) {
+                        const joinBtn = new ButtonBuilder().setCustomId('btn_gw_join').setLabel(`🎉 ${gw.participants.size}`).setStyle(ButtonStyle.Primary);
+                        const partBtn = new ButtonBuilder().setCustomId('btn_gw_participants').setLabel('👥 Katılımcılar').setStyle(ButtonStyle.Secondary);
+                        await msg.edit({ components: [new ActionRowBuilder().addComponents(joinBtn, partBtn)] }).catch(() => {});
+                    }
+                }
+
+                return interaction.update({ content: 'Çekilişten başarıyla ayrıldın.', components: [] });
+            } else {
+                return interaction.update({ content: 'Zaten çekilişte değilsin.', components: [] });
             }
         }
 
@@ -1678,7 +1760,7 @@ client.on('interactionCreate', async interaction => {
 
             const msg = await interaction.reply({ embeds: [embed], components: [row], fetchReply: true });
 
-           activeGiveaways.set(msg.id, {
+            activeGiveaways.set(msg.id, {
                 messageId: msg.id,
                 channelId: interaction.channel.id,
                 participants: new Set(),
@@ -1696,7 +1778,8 @@ client.on('interactionCreate', async interaction => {
                 winnersCount: winnersCount,
                 endsAt: endsAt,
                 host: interaction.user.id,
-                participants: []
+                participants: [],
+                status: 'active'
             }).catch(() => {});
 
             setTimeout(() => {
@@ -2087,15 +2170,13 @@ async function getGeneratorChannelId(guild) {
     return c ? c.id : null;
 }
 
-console.log("Discord'a baglanti istegi gonderiliyor...");
-
 client.once('ready', () => {
     console.log(`Bot basariyla aktif oldu: ${client.user.tag}`);
 });
 
 client.login(process.env.TOKEN)
     .then(() => {
-        console.log("Token doğru.");
+        console.log("Token dogru.");
     })
     .catch(err => {
         console.error("Hata:", err);
