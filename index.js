@@ -3,11 +3,14 @@ const {
     ActionRowBuilder, StringSelectMenuBuilder, StringSelectMenuOptionBuilder,
     ButtonBuilder, ButtonStyle, ChannelType, ModalBuilder, TextInputBuilder,
     TextInputStyle, REST, Routes, SlashCommandBuilder, ActivityType, MessageFlags,
-    AuditLogEvent
+    AuditLogEvent, AttachmentBuilder
 } = require('discord.js');
 const { joinVoiceChannel, getVoiceConnection } = require('@discordjs/voice');
 const express = require("express");
 const { Sequelize, DataTypes } = require('sequelize');
+const { Chess } = require('chess.js');
+const ChessImageGenerator = require('chess-image-generator');
+const { createCanvas } = require('canvas');
 
 const app = express();
 
@@ -67,6 +70,20 @@ const CustomMessage = sequelize.define('CustomMessage', {
     replyText: { type: DataTypes.TEXT, allowNull: false }
 });
 
+const ChessLeaderboard = sequelize.define('ChessLeaderboard', {
+    userId: { type: DataTypes.STRING, primaryKey: true },
+    wins: { type: DataTypes.INTEGER, defaultValue: 0 },
+    losses: { type: DataTypes.INTEGER, defaultValue: 0 },
+    draws: { type: DataTypes.INTEGER, defaultValue: 0 }
+});
+
+const XoxLeaderboard = sequelize.define('XoxLeaderboard', {
+    userId: { type: DataTypes.STRING, primaryKey: true },
+    wins: { type: DataTypes.INTEGER, defaultValue: 0 },
+    losses: { type: DataTypes.INTEGER, defaultValue: 0 },
+    draws: { type: DataTypes.INTEGER, defaultValue: 0 }
+});
+
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -100,9 +117,11 @@ const customRoleSetup = new Map();
 const userCustomRoles = new Map();
 const activeGiveaways = new Map();
 const customUserMessages = new Map();
-
 const guildInvites = new Map();
 const userInvites = new Map();
+
+const activeChessGames = new Map();
+const activeXoxGames = new Map();
 
 function createEmbed(title, description, color = 0x5865F2) {
     const embed = new EmbedBuilder()
@@ -131,6 +150,106 @@ async function sendLog(guild, title, description, color = 0xE67E22) {
     const channel = guild.channels.cache.get(LOG_CHANNEL_ID);
     if (channel) {
         await channel.send({ embeds: [createEmbed(title, description, color)] }).catch(() => {});
+    }
+}
+
+async function generateChessImage(fen) {
+    const imageGenerator = new ChessImageGenerator();
+    await imageGenerator.loadFEN(fen);
+    const buffer = await imageGenerator.generateBuffer();
+    return new AttachmentBuilder(buffer, { name: 'chess.png' });
+}
+
+async function generateXoxImage(board) {
+    const canvas = createCanvas(300, 300);
+    const ctx = canvas.getContext('2d');
+    
+    ctx.fillStyle = '#2b2d31';
+    ctx.fillRect(0, 0, 300, 300);
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 5;
+    
+    ctx.beginPath();
+    ctx.moveTo(100, 0); ctx.lineTo(100, 300);
+    ctx.moveTo(200, 0); ctx.lineTo(200, 300);
+    ctx.moveTo(0, 100); ctx.lineTo(300, 100);
+    ctx.moveTo(0, 200); ctx.lineTo(300, 200);
+    ctx.stroke();
+    
+    ctx.font = '80px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    
+    for (let i = 0; i < 9; i++) {
+        const x = (i % 3) * 100 + 50;
+        const y = Math.floor(i / 3) * 100 + 50;
+        if (board[i] === 'X') {
+            ctx.fillStyle = '#ff5555';
+            ctx.fillText('X', x, y);
+        } else if (board[i] === 'O') {
+            ctx.fillStyle = '#5555ff';
+            ctx.fillText('O', x, y);
+        }
+    }
+    return new AttachmentBuilder(canvas.toBuffer(), { name: 'xox.png' });
+}
+
+function getXoxButtons(gameId, board) {
+    const rows = [];
+    for (let i = 0; i < 3; i++) {
+        const row = new ActionRowBuilder();
+        for (let j = 0; j < 3; j++) {
+            const index = i * 3 + j;
+            row.addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`xox_btn_${gameId}_${index}`)
+                    .setLabel(board[index] || '\u200b')
+                    .setStyle(board[index] === 'X' ? ButtonStyle.Danger : board[index] === 'O' ? ButtonStyle.Primary : ButtonStyle.Secondary)
+                    .setDisabled(board[index] !== null)
+            );
+        }
+        rows.push(row);
+    }
+    const resignRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`xox_resign_${gameId}`).setLabel('Pes Et').setStyle(ButtonStyle.Danger)
+    );
+    rows.push(resignRow);
+    return rows;
+}
+
+async function endAfkGame(interactionOrMessage, gameId, type) {
+    const gameMap = type === 'chess' ? activeChessGames : activeXoxGames;
+    const game = gameMap.get(gameId);
+    if (!game) return;
+    
+    const winnerId = game.turn === (game.xPlayer || game.white) ? (game.oPlayer || game.black) : (game.xPlayer || game.white);
+    const loserId = game.turn;
+
+    await updateLeaderboard(type, winnerId, loserId, false);
+    gameMap.delete(gameId);
+    
+    try {
+        if (interactionOrMessage.editReply) {
+            await interactionOrMessage.editReply({ content: `⏳ 15 dakika boyunca hamle yapılmadığı için oyun sona erdi. Kazanan: <@${winnerId}>`, components: [] });
+        } else if (interactionOrMessage.edit) {
+            await interactionOrMessage.edit({ content: `⏳ 15 dakika boyunca hamle yapılmadığı için oyun sona erdi. Kazanan: <@${winnerId}>`, components: [] });
+        }
+    } catch(e) {}
+}
+
+async function updateLeaderboard(type, winnerId, loserId, isDraw) {
+    const model = type === 'chess' ? ChessLeaderboard : XoxLeaderboard;
+    
+    if (isDraw) {
+        const [winner] = await model.findOrCreate({ where: { userId: winnerId } });
+        const [loser] = await model.findOrCreate({ where: { userId: loserId } });
+        await winner.increment('draws', { by: 1 });
+        await loser.increment('draws', { by: 1 });
+    } else {
+        const [winner] = await model.findOrCreate({ where: { userId: winnerId } });
+        const [loser] = await model.findOrCreate({ where: { userId: loserId } });
+        await winner.increment('wins', { by: 1 });
+        await loser.increment('losses', { by: 1 });
     }
 }
 
@@ -457,7 +576,31 @@ client.on('clientReady', async () => {
         new SlashCommandBuilder()
             .setName('medya')
             .setDescription('TikTok videosunu oynatır.')
-            .addStringOption(o => o.setName('link').setDescription('Video linki').setRequired(true))
+            .addStringOption(o => o.setName('link').setDescription('Video linki').setRequired(true)),
+        new SlashCommandBuilder()
+            .setName('satranç')
+            .setDescription('Satranç oyun sistemi')
+            .addSubcommand(s => s
+                .setName('oyna')
+                .setDescription('Bir kullanıcı ile görsel satranç oynarsınız.')
+                .addUserOption(o => o.setName('rakip').setDescription('Rakip kullanıcı').setRequired(true))
+            )
+            .addSubcommand(s => s
+                .setName('sıralama')
+                .setDescription('Satranç liderlik tablosunu gösterir.')
+            ),
+        new SlashCommandBuilder()
+            .setName('xox')
+            .setDescription('XOX oyun sistemi')
+            .addSubcommand(s => s
+                .setName('oyna')
+                .setDescription('Bir kullanıcı ile XOX oynarsınız.')
+                .addUserOption(o => o.setName('rakip').setDescription('Rakip kullanıcı').setRequired(true))
+            )
+            .addSubcommand(s => s
+                .setName('sıralama')
+                .setDescription('XOX liderlik tablosunu gösterir.')
+            )
     ];
 
     const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
@@ -785,6 +928,86 @@ client.on('interactionCreate', async interaction => {
     if (interaction.isChatInputCommand()) {
         const { commandName, options, member, guild } = interaction;
 
+        if (commandName === 'satranç') {
+            const sub = options.getSubcommand();
+            if (sub === 'oyna') {
+                const target = options.getUser('rakip');
+                if (target.id === interaction.user.id || target.bot) {
+                    return interaction.reply({ content: 'Kendinizle veya botlarla oynayamazsınız.', flags: MessageFlags.Ephemeral });
+                }
+        
+                const gameId = `${interaction.user.id}_${target.id}_${Date.now()}`;
+                const chess = new Chess();
+                
+                activeChessGames.set(gameId, {
+                    chess: chess,
+                    white: interaction.user.id,
+                    black: target.id,
+                    turn: interaction.user.id,
+                    lastMoveTime: Date.now(),
+                    timeoutObj: setTimeout(() => endAfkGame(interaction, gameId, 'chess'), 900000)
+                });
+        
+                const attachment = await generateChessImage(chess.fen());
+                
+                const row = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder().setCustomId(`chess_move_${gameId}`).setLabel('Hamle Yap').setStyle(ButtonStyle.Primary),
+                    new ButtonBuilder().setCustomId(`chess_resign_${gameId}`).setLabel('Pes Et').setStyle(ButtonStyle.Danger)
+                );
+        
+                await interaction.reply({ 
+                    content: `♟️ <@${interaction.user.id}> (Beyaz) vs <@${target.id}> (Siyah)\nSıra: <@${interaction.user.id}>`, 
+                    files: [attachment], 
+                    components: [row] 
+                });
+            }
+            
+            if (sub === 'sıralama') {
+                const leaders = await ChessLeaderboard.findAll({ order: [['wins', 'DESC']], limit: 10 });
+                let desc = leaders.map((l, i) => `${i + 1}. <@${l.userId}> - Kazanma: ${l.wins} | Kaybetme: ${l.losses}`).join('\n') || 'Henüz kayıt yok.';
+                const embed = createEmbed('♟️ Satranç Liderlik Tablosu', desc, 0x5865F2);
+                await interaction.reply({ embeds: [embed] });
+            }
+        }
+        
+        if (commandName === 'xox') {
+            const sub = options.getSubcommand();
+            if (sub === 'oyna') {
+                const target = options.getUser('rakip');
+                if (target.id === interaction.user.id || target.bot) {
+                    return interaction.reply({ content: 'Kendinizle veya botlarla oynayamazsınız.', flags: MessageFlags.Ephemeral });
+                }
+        
+                const gameId = `${interaction.user.id}_${target.id}_${Date.now()}`;
+                const board = Array(9).fill(null);
+                
+                activeXoxGames.set(gameId, {
+                    board: board,
+                    xPlayer: interaction.user.id,
+                    oPlayer: target.id,
+                    turn: interaction.user.id,
+                    lastMoveTime: Date.now(),
+                    timeoutObj: setTimeout(() => endAfkGame(interaction, gameId, 'xox'), 900000)
+                });
+        
+                const attachment = await generateXoxImage(board);
+                const components = getXoxButtons(gameId, board);
+        
+                await interaction.reply({ 
+                    content: `⭕❌ <@${interaction.user.id}> (X) vs <@${target.id}> (O)\nSıra: <@${interaction.user.id}>`, 
+                    files: [attachment], 
+                    components: components 
+                });
+            }
+        
+            if (sub === 'sıralama') {
+                const leaders = await XoxLeaderboard.findAll({ order: [['wins', 'DESC']], limit: 10 });
+                let desc = leaders.map((l, i) => `${i + 1}. <@${l.userId}> - Kazanma: ${l.wins} | Kaybetme: ${l.losses}`).join('\n') || 'Henüz kayıt yok.';
+                const embed = createEmbed('⭕❌ XOX Liderlik Tablosu', desc, 0xE74C3C);
+                await interaction.reply({ embeds: [embed] });
+            }
+        }
+
         if (commandName === 'çekiliş') {
             const modal = new ModalBuilder().setCustomId('modal_giveaway').setTitle('Çekiliş Başlat');
 
@@ -1076,7 +1299,7 @@ client.on('interactionCreate', async interaction => {
         if (commandName === 'yardım') {
             const helpEmbed = createEmbed('📑 Komut Listesi', 'Aşağıda botun kullanılabilir komutları listelenmiştir.', 0x5865F2)
                 .addFields(
-                    { name: '🛠️ Genel Komutlar', value: '`/yardım`, `/öneri`, `/ping`, `/sunucu-bilgi`, `/kullanıcı-bilgi`, `/medya`' },
+                    { name: '🛠️ Genel Komutlar', value: '`/yardım`, `/öneri`, `/ping`, `/sunucu-bilgi`, `/kullanıcı-bilgi`, `/medya`, `/satranç`, `/xox`' },
                     { name: '🛡️ Yönetici Komutları', value: '`/çekiliş`, `/yeniden-çek`, `/mod-form`, `/ses-panel`, `/bilet olustur`, `/link-engel`, `/kick`, `/ban`, `/mute`, `/unmute`, `/sil`, `/rol ayarla`, `/özel mesaj-ayarla`, `/özel mesaj-sil`' },
                     { name: '🚀 Takviyeci Komutları', value: '`/özel rol-ayarla`, `/özel rol-sil`' },
                     { name: '🔊 Ses Sistemi', value: 'Özel oda kurmak için **Oda Oluştur** kanalına girmeniz yeterlidir.' },
@@ -1270,6 +1493,97 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (interaction.isButton()) {
+        if (interaction.customId.startsWith('chess_move_')) {
+            const gameId = interaction.customId.replace('chess_move_', '');
+            const game = activeChessGames.get(gameId);
+            
+            if (!game) return interaction.reply({ content: 'Bu oyun sona ermiş.', flags: MessageFlags.Ephemeral });
+            if (interaction.user.id !== game.turn) return interaction.reply({ content: 'Sıra sizde değil!', flags: MessageFlags.Ephemeral });
+        
+            const modal = new ModalBuilder().setCustomId(`modal_chess_${gameId}`).setTitle('Hamle Yap');
+            const input = new TextInputBuilder()
+                .setCustomId('move_input')
+                .setLabel('Hamleniz (Örn: e2e4 veya Nf3)')
+                .setStyle(TextInputStyle.Short)
+                .setRequired(true);
+            modal.addComponents(new ActionRowBuilder().addComponents(input));
+            await interaction.showModal(modal);
+        }
+        
+        if (interaction.customId.startsWith('chess_resign_')) {
+            const gameId = interaction.customId.replace('chess_resign_', '');
+            const game = activeChessGames.get(gameId);
+            
+            if (!game) return interaction.reply({ content: 'Oyun zaten bitti.', flags: MessageFlags.Ephemeral });
+            if (interaction.user.id !== game.white && interaction.user.id !== game.black) return;
+        
+            clearTimeout(game.timeoutObj);
+            const winner = interaction.user.id === game.white ? game.black : game.white;
+            await updateLeaderboard('chess', winner, interaction.user.id, false);
+            activeChessGames.delete(gameId);
+            
+            await interaction.update({ content: `🏳️ <@${interaction.user.id}> pes etti. Kazanan: <@${winner}>`, components: [] });
+        }
+        
+        if (interaction.customId.startsWith('xox_btn_')) {
+            const parts = interaction.customId.split('_');
+            const gameId = `${parts[2]}_${parts[3]}_${parts[4]}`;
+            const index = parseInt(parts[5]);
+            const game = activeXoxGames.get(gameId);
+        
+            if (!game) return interaction.reply({ content: 'Oyun bitmiş.', flags: MessageFlags.Ephemeral });
+            if (interaction.user.id !== game.turn) return interaction.reply({ content: 'Sıra sizde değil!', flags: MessageFlags.Ephemeral });
+        
+            clearTimeout(game.timeoutObj);
+            const symbol = interaction.user.id === game.xPlayer ? 'X' : 'O';
+            game.board[index] = symbol;
+            
+            const winPatterns = [
+                [0,1,2], [3,4,5], [6,7,8], [0,3,6], [1,4,7], [2,5,8], [0,4,8], [2,4,6]
+            ];
+            
+            let isWin = false;
+            for (const pattern of winPatterns) {
+                if (game.board[pattern[0]] && game.board[pattern[0]] === game.board[pattern[1]] && game.board[pattern[0]] === game.board[pattern[2]]) {
+                    isWin = true;
+                    break;
+                }
+            }
+        
+            const isDraw = !isWin && !game.board.includes(null);
+            const attachment = await generateXoxImage(game.board);
+        
+            if (isWin) {
+                const loser = interaction.user.id === game.xPlayer ? game.oPlayer : game.xPlayer;
+                await updateLeaderboard('xox', interaction.user.id, loser, false);
+                activeXoxGames.delete(gameId);
+                await interaction.update({ content: `🏆 <@${interaction.user.id}> kazandı!`, files: [attachment], components: [] });
+            } else if (isDraw) {
+                await updateLeaderboard('xox', interaction.user.id, game.oPlayer, true);
+                activeXoxGames.delete(gameId);
+                await interaction.update({ content: '🤝 Oyun berabere bitti!', files: [attachment], components: [] });
+            } else {
+                game.turn = interaction.user.id === game.xPlayer ? game.oPlayer : game.xPlayer;
+                game.timeoutObj = setTimeout(() => endAfkGame(interaction, gameId, 'xox'), 900000);
+                await interaction.update({ content: `⭕❌ Sıra: <@${game.turn}>`, files: [attachment], components: getXoxButtons(gameId, game.board) });
+            }
+        }
+        
+        if (interaction.customId.startsWith('xox_resign_')) {
+            const gameId = interaction.customId.replace('xox_resign_', '');
+            const game = activeXoxGames.get(gameId);
+            
+            if (!game) return interaction.reply({ content: 'Oyun zaten bitti.', flags: MessageFlags.Ephemeral });
+            if (interaction.user.id !== game.xPlayer && interaction.user.id !== game.oPlayer) return;
+        
+            clearTimeout(game.timeoutObj);
+            const winner = interaction.user.id === game.xPlayer ? game.oPlayer : game.xPlayer;
+            await updateLeaderboard('xox', winner, interaction.user.id, false);
+            activeXoxGames.delete(gameId);
+            
+            await interaction.update({ content: `🏳️ <@${interaction.user.id}> pes etti. Kazanan: <@${winner}>`, components: [] });
+        }
+
         if (interaction.customId === 'btn_gw_join') {
             const gw = activeGiveaways.get(interaction.message.id);
             if (!gw) {
@@ -1779,6 +2093,52 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (interaction.isModalSubmit()) {
+        if (interaction.customId.startsWith('modal_chess_')) {
+            const gameId = interaction.customId.replace('modal_chess_', '');
+            const game = activeChessGames.get(gameId);
+            
+            if (!game) return interaction.reply({ content: 'Oyun süresi dolmuş veya bitmiş.', flags: MessageFlags.Ephemeral });
+            
+            const move = interaction.fields.getTextInputValue('move_input');
+            
+            try {
+                game.chess.move(move);
+            } catch (e) {
+                return interaction.reply({ content: 'Geçersiz hamle! Standart notasyon kullanın (Örn: e4, Nf3, O-O)', flags: MessageFlags.Ephemeral });
+            }
+        
+            clearTimeout(game.timeoutObj);
+            const attachment = await generateChessImage(game.chess.fen());
+        
+            if (game.chess.isGameOver()) {
+                let resultMsg = '';
+                if (game.chess.isCheckmate()) {
+                    const loser = interaction.user.id === game.white ? game.black : game.white;
+                    await updateLeaderboard('chess', interaction.user.id, loser, false);
+                    resultMsg = `🏆 Şah Mat! <@${interaction.user.id}> kazandı.`;
+                } else {
+                    await updateLeaderboard('chess', interaction.user.id, game.white === interaction.user.id ? game.black : game.white, true);
+                    resultMsg = '🤝 Oyun berabere bitti.';
+                }
+                activeChessGames.delete(gameId);
+                await interaction.update({ content: resultMsg, files: [attachment], components: [] });
+            } else {
+                game.turn = interaction.user.id === game.white ? game.black : game.white;
+                game.timeoutObj = setTimeout(() => endAfkGame(interaction, gameId, 'chess'), 900000);
+                
+                const row = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder().setCustomId(`chess_move_${gameId}`).setLabel('Hamle Yap').setStyle(ButtonStyle.Primary),
+                    new ButtonBuilder().setCustomId(`chess_resign_${gameId}`).setLabel('Pes Et').setStyle(ButtonStyle.Danger)
+                );
+
+                await interaction.update({ 
+                    content: `♟️ Sıra: <@${game.turn}>`, 
+                    files: [attachment],
+                    components: [row]
+                });
+            }
+        }
+
         if (interaction.customId === 'modal_giveaway') {
             const title = interaction.fields.getTextInputValue('gw_title');
             const desc = interaction.fields.getTextInputValue('gw_desc');
