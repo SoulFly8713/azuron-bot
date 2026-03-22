@@ -1066,6 +1066,13 @@ client.on('interactionCreate', async interaction => {
             const sub = options.getSubcommand();
             if (sub === 'oyna') {
                 const target = options.getUser('rakip');
+
+                 if (isUserInGame(interaction.user.id)) {
+                   return interaction.reply({ content: 'Zaten aktif bir oyununuz var! Bitmeden yenisini açamazsınız.', flags: MessageFlags.Ephemeral });
+                } 
+                if (target.id !== client.user.id && isUserInGame(target.id)) {
+                  return interaction.reply({ content: 'Rakibiniz şu anda başka bir oyunda, ona istek atamazsınız!', flags: MessageFlags.Ephemeral });
+                 }
                 if (target.id === interaction.user.id || (target.bot && target.id !== client.user.id)) {
                     return interaction.reply({ content: 'Kendinizle veya diğer botlarla oynayamazsınız.', flags: MessageFlags.Ephemeral });
                 }
