@@ -127,6 +127,16 @@ const userInvites = new Map();
 const activeChessGames = new Map();
 const activeXoxGames = new Map();
 
+function isUserInGame(userId) {
+    for (const game of activeChessGames.values()) {
+        if (game.white === userId || game.black === userId) return true;
+    }
+    for (const game of activeXoxGames.values()) {
+        if (game.xPlayer === userId || game.oPlayer === userId) return true;
+    }
+    return false;
+}
+
 function createEmbed(title, description, color = 0x5865F2) {
     const embed = new EmbedBuilder()
         .setTitle(title)
@@ -1001,8 +1011,18 @@ client.on('interactionCreate', async interaction => {
 
         if (commandName === 'satranç') {
             const sub = options.getSubcommand();
-            if (sub === 'oyna') {
-                const target = options.getUser('rakip');
+                if (sub === 'oyna') {
+            const target = options.getUser('rakip');
+    
+            if (isUserInGame(interaction.user.id)) {
+                return interaction.reply({ content: 'Zaten aktif bir oyununuz var! Bitmeden yenisini açamazsınız.', flags: MessageFlags.Ephemeral });
+                }
+              if (target.id !== client.user.id && isUserInGame(target.id)) {
+                return interaction.reply({ content: 'Rakibiniz şu anda başka bir oyunda, ona istek atamazsınız!', flags: MessageFlags.Ephemeral });
+                }
+               if (target.id === interaction.user.id || (target.bot && target.id !== client.user.id)) {
+                return interaction.reply({ content: 'Geçersiz rakip.', flags: MessageFlags.Ephemeral });
+               }
                 if (target.id === interaction.user.id || (target.bot && target.id !== client.user.id)) {
                     return interaction.reply({ content: 'Kendinizle veya diğer botlarla oynayamazsınız.', flags: MessageFlags.Ephemeral });
                 }
