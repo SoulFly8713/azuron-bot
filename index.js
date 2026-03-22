@@ -217,6 +217,47 @@ function getXoxButtons(gameId, board) {
     return rows;
 }
 
+function getBotChessMove(chessInstance) {
+    const moves = chessInstance.moves({ verbose: true });
+    if (moves.length === 0) return null;
+    let bestMove = moves.find(m => {
+        chessInstance.move(m.san);
+        const isMate = chessInstance.isCheckmate();
+        chessInstance.undo();
+        return isMate;
+    });
+    if (!bestMove) {
+        const captures = moves.filter(m => m.flags.includes('c') || m.flags.includes('e'));
+        if (captures.length > 0) {
+            bestMove = captures[Math.floor(Math.random() * captures.length)];
+        }
+    }
+    if (!bestMove) {
+        bestMove = moves[Math.floor(Math.random() * moves.length)];
+    }
+    return bestMove.san;
+}
+
+function getBotXoxMove(board, botSymbol, playerSymbol) {
+    const emptySpots = board.map((v, i) => v === null ? i : null).filter(v => v !== null);
+    if (emptySpots.length === 0) return null;
+    const winPatterns = [[0,1,2], [3,4,5], [6,7,8], [0,3,6], [1,4,7], [2,5,8], [0,4,8], [2,4,6]];
+    for (const pattern of winPatterns) {
+        const values = pattern.map(i => board[i]);
+        if (values.filter(v => v === botSymbol).length === 2 && values.includes(null)) {
+            return pattern[values.indexOf(null)];
+        }
+    }
+    for (const pattern of winPatterns) {
+        const values = pattern.map(i => board[i]);
+        if (values.filter(v => v === playerSymbol).length === 2 && values.includes(null)) {
+            return pattern[values.indexOf(null)];
+        }
+    }
+    if (emptySpots.includes(4)) return 4;
+    return emptySpots[Math.floor(Math.random() * emptySpots.length)];
+}
+
 async function endAfkGame(interactionOrMessage, gameId, type) {
     const gameMap = type === 'chess' ? activeChessGames : activeXoxGames;
     const game = gameMap.get(gameId);
@@ -932,8 +973,8 @@ client.on('interactionCreate', async interaction => {
             const sub = options.getSubcommand();
             if (sub === 'oyna') {
                 const target = options.getUser('rakip');
-                if (target.id === interaction.user.id || target.bot) {
-                    return interaction.reply({ content: 'Kendinizle veya botlarla oynayamazsınız.', flags: MessageFlags.Ephemeral });
+                if (target.id === interaction.user.id || (target.bot && target.id !== client.user.id)) {
+                    return interaction.reply({ content: 'Kendinizle veya diğer botlarla oynayamazsınız.', flags: MessageFlags.Ephemeral });
                 }
         
                 const gameId = `${interaction.user.id}_${target.id}_${Date.now()}`;
@@ -974,8 +1015,8 @@ client.on('interactionCreate', async interaction => {
             const sub = options.getSubcommand();
             if (sub === 'oyna') {
                 const target = options.getUser('rakip');
-                if (target.id === interaction.user.id || target.bot) {
-                    return interaction.reply({ content: 'Kendinizle veya botlarla oynayamazsınız.', flags: MessageFlags.Ephemeral });
+                if (target.id === interaction.user.id || (target.bot && target.id !== client.user.id)) {
+                    return interaction.reply({ content: 'Kendinizle veya diğer botlarla oynayamazsınız.', flags: MessageFlags.Ephemeral });
                 }
         
                 const gameId = `${interaction.user.id}_${target.id}_${Date.now()}`;
@@ -1538,32 +1579,55 @@ client.on('interactionCreate', async interaction => {
             const symbol = interaction.user.id === game.xPlayer ? 'X' : 'O';
             game.board[index] = symbol;
             
-            const winPatterns = [
-                [0,1,2], [3,4,5], [6,7,8], [0,3,6], [1,4,7], [2,5,8], [0,4,8], [2,4,6]
-            ];
+            let isGameOver = false;
+            let isDraw = false;
+            let winner = null;
             
-            let isWin = false;
-            for (const pattern of winPatterns) {
-                if (game.board[pattern[0]] && game.board[pattern[0]] === game.board[pattern[1]] && game.board[pattern[0]] === game.board[pattern[2]]) {
-                    isWin = true;
-                    break;
+            const checkWin = (b) => {
+                const winPatterns = [[0,1,2], [3,4,5], [6,7,8], [0,3,6], [1,4,7], [2,5,8], [0,4,8], [2,4,6]];
+                for (const p of winPatterns) {
+                    if (b[p[0]] && b[p[0]] === b[p[1]] && b[p[0]] === b[p[2]]) return b[p[0]];
                 }
-            }
-        
-            const isDraw = !isWin && !game.board.includes(null);
-            const attachment = await generateXoxImage(game.board);
-        
-            if (isWin) {
-                const loser = interaction.user.id === game.xPlayer ? game.oPlayer : game.xPlayer;
-                await updateLeaderboard('xox', interaction.user.id, loser, false);
-                activeXoxGames.delete(gameId);
-                await interaction.update({ content: `🏆 <@${interaction.user.id}> kazandı!`, files: [attachment], components: [] });
-            } else if (isDraw) {
-                await updateLeaderboard('xox', interaction.user.id, game.oPlayer, true);
-                activeXoxGames.delete(gameId);
-                await interaction.update({ content: '🤝 Oyun berabere bitti!', files: [attachment], components: [] });
+                return null;
+            };
+            
+            let w = checkWin(game.board);
+            if (w) {
+                isGameOver = true;
+                winner = interaction.user.id;
+            } else if (!game.board.includes(null)) {
+                isGameOver = true;
+                isDraw = true;
+            } else if (game.oPlayer === client.user.id && symbol === 'X') {
+                const botIdx = getBotXoxMove(game.board, 'O', 'X');
+                if (botIdx !== null) game.board[botIdx] = 'O';
+                w = checkWin(game.board);
+                if (w) {
+                    isGameOver = true;
+                    winner = game.oPlayer;
+                } else if (!game.board.includes(null)) {
+                    isGameOver = true;
+                    isDraw = true;
+                }
+                game.turn = game.xPlayer;
             } else {
                 game.turn = interaction.user.id === game.xPlayer ? game.oPlayer : game.xPlayer;
+            }
+        
+            const attachment = await generateXoxImage(game.board);
+        
+            if (isGameOver) {
+                if (isDraw) {
+                    await updateLeaderboard('xox', game.xPlayer, game.oPlayer, true);
+                    activeXoxGames.delete(gameId);
+                    await interaction.update({ content: '🤝 Oyun berabere bitti!', files: [attachment], components: [] });
+                } else {
+                    const loser = winner === game.xPlayer ? game.oPlayer : game.xPlayer;
+                    await updateLeaderboard('xox', winner, loser, false);
+                    activeXoxGames.delete(gameId);
+                    await interaction.update({ content: `🏆 <@${winner}> kazandı!`, files: [attachment], components: [] });
+                }
+            } else {
                 game.timeoutObj = setTimeout(() => endAfkGame(interaction, gameId, 'xox'), 900000);
                 await interaction.update({ content: `⭕❌ Sıra: <@${game.turn}>`, files: [attachment], components: getXoxButtons(gameId, game.board) });
             }
@@ -2108,22 +2172,33 @@ client.on('interactionCreate', async interaction => {
             }
         
             clearTimeout(game.timeoutObj);
+
+            let isGameOver = game.chess.isGameOver();
+            if (!isGameOver && game.black === client.user.id && interaction.user.id === game.white) {
+                const botMove = getBotChessMove(game.chess);
+                if (botMove) game.chess.move(botMove);
+                isGameOver = game.chess.isGameOver();
+                game.turn = game.white;
+            } else if (!isGameOver) {
+                game.turn = game.turn === game.white ? game.black : game.white;
+            }
+
             const attachment = await generateChessImage(game.chess.fen());
         
-            if (game.chess.isGameOver()) {
+            if (isGameOver) {
                 let resultMsg = '';
                 if (game.chess.isCheckmate()) {
-                    const loser = interaction.user.id === game.white ? game.black : game.white;
-                    await updateLeaderboard('chess', interaction.user.id, loser, false);
-                    resultMsg = `🏆 Şah Mat! <@${interaction.user.id}> kazandı.`;
+                    const winner = game.chess.turn() === 'w' ? game.black : game.white;
+                    const loser = winner === game.white ? game.black : game.white;
+                    await updateLeaderboard('chess', winner, loser, false);
+                    resultMsg = `🏆 Şah Mat! <@${winner}> kazandı.`;
                 } else {
-                    await updateLeaderboard('chess', interaction.user.id, game.white === interaction.user.id ? game.black : game.white, true);
+                    await updateLeaderboard('chess', game.white, game.black, true);
                     resultMsg = '🤝 Oyun berabere bitti.';
                 }
                 activeChessGames.delete(gameId);
                 await interaction.update({ content: resultMsg, files: [attachment], components: [] });
             } else {
-                game.turn = interaction.user.id === game.white ? game.black : game.white;
                 game.timeoutObj = setTimeout(() => endAfkGame(interaction, gameId, 'chess'), 900000);
                 
                 const row = new ActionRowBuilder().addComponents(
