@@ -10,7 +10,7 @@ const express = require("express");
 const { Sequelize, DataTypes } = require('sequelize');
 const { Chess } = require('chess.js');
 const ChessImageGenerator = require('chess-image-generator');
-const { createCanvas } = require('canvas');
+const { createCanvas, loadImage } = require('canvas');
 
 const app = express();
 
@@ -71,14 +71,18 @@ const CustomMessage = sequelize.define('CustomMessage', {
 });
 
 const ChessLeaderboard = sequelize.define('ChessLeaderboard', {
-    userId: { type: DataTypes.STRING, primaryKey: true },
+    id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+    userId: { type: DataTypes.STRING, allowNull: false },
+    guildId: { type: DataTypes.STRING, allowNull: false },
     wins: { type: DataTypes.INTEGER, defaultValue: 0 },
     losses: { type: DataTypes.INTEGER, defaultValue: 0 },
     draws: { type: DataTypes.INTEGER, defaultValue: 0 }
 });
 
 const XoxLeaderboard = sequelize.define('XoxLeaderboard', {
-    userId: { type: DataTypes.STRING, primaryKey: true },
+    id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+    userId: { type: DataTypes.STRING, allowNull: false },
+    guildId: { type: DataTypes.STRING, allowNull: false },
     wins: { type: DataTypes.INTEGER, defaultValue: 0 },
     losses: { type: DataTypes.INTEGER, defaultValue: 0 },
     draws: { type: DataTypes.INTEGER, defaultValue: 0 }
@@ -156,8 +160,33 @@ async function sendLog(guild, title, description, color = 0xE67E22) {
 async function generateChessImage(fen) {
     const imageGenerator = new ChessImageGenerator();
     await imageGenerator.loadFEN(fen);
-    const buffer = await imageGenerator.generateBuffer();
-    return new AttachmentBuilder(buffer, { name: 'chess.png' });
+    const rawBuffer = await imageGenerator.generateBuffer();
+
+    const img = await loadImage(rawBuffer);
+    const canvas = createCanvas(img.width + 30, img.height + 30);
+    const ctx = canvas.getContext('2d');
+
+    ctx.fillStyle = '#2b2d31';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 30, 0);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '16px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    const squareSize = img.width / 8;
+
+    for (let i = 0; i < 8; i++) {
+        ctx.fillText(8 - i, 15, (i * squareSize) + (squareSize / 2));
+    }
+
+    const letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+    for (let i = 0; i < 8; i++) {
+        ctx.fillText(letters[i], 30 + (i * squareSize) + (squareSize / 2), img.height + 15);
+    }
+
+    return new AttachmentBuilder(canvas.toBuffer(), { name: 'chess.png' });
 }
 
 async function generateXoxImage(board) {
@@ -266,7 +295,7 @@ async function endAfkGame(interactionOrMessage, gameId, type) {
     const winnerId = game.turn === (game.xPlayer || game.white) ? (game.oPlayer || game.black) : (game.xPlayer || game.white);
     const loserId = game.turn;
 
-    await updateLeaderboard(type, winnerId, loserId, false);
+    await updateLeaderboard(type, game.guildId, winnerId, loserId, false);
     gameMap.delete(gameId);
     
     try {
@@ -278,17 +307,17 @@ async function endAfkGame(interactionOrMessage, gameId, type) {
     } catch(e) {}
 }
 
-async function updateLeaderboard(type, winnerId, loserId, isDraw) {
+async function updateLeaderboard(type, guildId, winnerId, loserId, isDraw) {
     const model = type === 'chess' ? ChessLeaderboard : XoxLeaderboard;
     
     if (isDraw) {
-        const [winner] = await model.findOrCreate({ where: { userId: winnerId } });
-        const [loser] = await model.findOrCreate({ where: { userId: loserId } });
+        const [winner] = await model.findOrCreate({ where: { userId: winnerId, guildId: guildId } });
+        const [loser] = await model.findOrCreate({ where: { userId: loserId, guildId: guildId } });
         await winner.increment('draws', { by: 1 });
         await loser.increment('draws', { by: 1 });
     } else {
-        const [winner] = await model.findOrCreate({ where: { userId: winnerId } });
-        const [loser] = await model.findOrCreate({ where: { userId: loserId } });
+        const [winner] = await model.findOrCreate({ where: { userId: winnerId, guildId: guildId } });
+        const [loser] = await model.findOrCreate({ where: { userId: loserId, guildId: guildId } });
         await winner.increment('wins', { by: 1 });
         await loser.increment('losses', { by: 1 });
     }
@@ -623,7 +652,7 @@ client.on('clientReady', async () => {
             .setDescription('Satranç oyun sistemi')
             .addSubcommand(s => s
                 .setName('oyna')
-                .setDescription('Bir kullanıcı ile görsel satranç oynarsınız.')
+                .setDescription('Bir kullanıcı ile satranç oynarsınız.')
                 .addUserOption(o => o.setName('rakip').setDescription('Rakip kullanıcı').setRequired(true))
             )
             .addSubcommand(s => s
@@ -985,6 +1014,7 @@ client.on('interactionCreate', async interaction => {
                     white: interaction.user.id,
                     black: target.id,
                     turn: interaction.user.id,
+                    guildId: interaction.guildId,
                     lastMoveTime: Date.now(),
                     timeoutObj: setTimeout(() => endAfkGame(interaction, gameId, 'chess'), 900000)
                 });
@@ -1004,7 +1034,7 @@ client.on('interactionCreate', async interaction => {
             }
             
             if (sub === 'sıralama') {
-                const leaders = await ChessLeaderboard.findAll({ order: [['wins', 'DESC']], limit: 10 });
+                const leaders = await ChessLeaderboard.findAll({ where: { guildId: guild.id }, order: [['wins', 'DESC']], limit: 10 });
                 let desc = leaders.map((l, i) => `${i + 1}. <@${l.userId}> - Kazanma: ${l.wins} | Kaybetme: ${l.losses}`).join('\n') || 'Henüz kayıt yok.';
                 const embed = createEmbed('♟️ Satranç Liderlik Tablosu', desc, 0x5865F2);
                 await interaction.reply({ embeds: [embed] });
@@ -1027,6 +1057,7 @@ client.on('interactionCreate', async interaction => {
                     xPlayer: interaction.user.id,
                     oPlayer: target.id,
                     turn: interaction.user.id,
+                    guildId: interaction.guildId,
                     lastMoveTime: Date.now(),
                     timeoutObj: setTimeout(() => endAfkGame(interaction, gameId, 'xox'), 900000)
                 });
@@ -1042,7 +1073,7 @@ client.on('interactionCreate', async interaction => {
             }
         
             if (sub === 'sıralama') {
-                const leaders = await XoxLeaderboard.findAll({ order: [['wins', 'DESC']], limit: 10 });
+                const leaders = await XoxLeaderboard.findAll({ where: { guildId: guild.id }, order: [['wins', 'DESC']], limit: 10 });
                 let desc = leaders.map((l, i) => `${i + 1}. <@${l.userId}> - Kazanma: ${l.wins} | Kaybetme: ${l.losses}`).join('\n') || 'Henüz kayıt yok.';
                 const embed = createEmbed('⭕❌ XOX Liderlik Tablosu', desc, 0xE74C3C);
                 await interaction.reply({ embeds: [embed] });
@@ -1340,9 +1371,10 @@ client.on('interactionCreate', async interaction => {
         if (commandName === 'yardım') {
             const helpEmbed = createEmbed('📑 Komut Listesi', 'Aşağıda botun kullanılabilir komutları listelenmiştir.', 0x5865F2)
                 .addFields(
-                    { name: '🛠️ Genel Komutlar', value: '`/yardım`, `/öneri`, `/ping`, `/sunucu-bilgi`, `/kullanıcı-bilgi`, `/medya`, `/satranç`, `/xox`' },
+                    { name: '🛠️ Genel Komutlar', value: '`/yardım`, `/öneri`, `/ping`, `/sunucu-bilgi`, `/kullanıcı-bilgi`, `/medya`' },
                     { name: '🛡️ Yönetici Komutları', value: '`/çekiliş`, `/yeniden-çek`, `/mod-form`, `/ses-panel`, `/bilet olustur`, `/link-engel`, `/kick`, `/ban`, `/mute`, `/unmute`, `/sil`, `/rol ayarla`, `/özel mesaj-ayarla`, `/özel mesaj-sil`' },
                     { name: '🚀 Takviyeci Komutları', value: '`/özel rol-ayarla`, `/özel rol-sil`' },
+                    { name: '🎉 Eğlence Komutları', value: '`/satranç`, `/xox`' },
                     { name: '🔊 Ses Sistemi', value: 'Özel oda kurmak için **Oda Oluştur** kanalına girmeniz yeterlidir.' },
                     { name: '🎫 Bilet Sistemi', value: '**bilet-oluştur** kanalındaki menüden destek bileti açabilirsiniz.' }
                 );
@@ -1560,7 +1592,7 @@ client.on('interactionCreate', async interaction => {
         
             clearTimeout(game.timeoutObj);
             const winner = interaction.user.id === game.white ? game.black : game.white;
-            await updateLeaderboard('chess', winner, interaction.user.id, false);
+            await updateLeaderboard('chess', interaction.guildId, winner, interaction.user.id, false);
             activeChessGames.delete(gameId);
             
             await interaction.update({ content: `🏳️ <@${interaction.user.id}> pes etti. Kazanan: <@${winner}>`, components: [] });
@@ -1618,12 +1650,12 @@ client.on('interactionCreate', async interaction => {
         
             if (isGameOver) {
                 if (isDraw) {
-                    await updateLeaderboard('xox', game.xPlayer, game.oPlayer, true);
+                    await updateLeaderboard('xox', interaction.guildId, game.xPlayer, game.oPlayer, true);
                     activeXoxGames.delete(gameId);
                     await interaction.update({ content: '🤝 Oyun berabere bitti!', files: [attachment], components: [] });
                 } else {
                     const loser = winner === game.xPlayer ? game.oPlayer : game.xPlayer;
-                    await updateLeaderboard('xox', winner, loser, false);
+                    await updateLeaderboard('xox', interaction.guildId, winner, loser, false);
                     activeXoxGames.delete(gameId);
                     await interaction.update({ content: `🏆 <@${winner}> kazandı!`, files: [attachment], components: [] });
                 }
@@ -1642,7 +1674,7 @@ client.on('interactionCreate', async interaction => {
         
             clearTimeout(game.timeoutObj);
             const winner = interaction.user.id === game.xPlayer ? game.oPlayer : game.xPlayer;
-            await updateLeaderboard('xox', winner, interaction.user.id, false);
+            await updateLeaderboard('xox', interaction.guildId, winner, interaction.user.id, false);
             activeXoxGames.delete(gameId);
             
             await interaction.update({ content: `🏳️ <@${interaction.user.id}> pes etti. Kazanan: <@${winner}>`, components: [] });
@@ -2190,10 +2222,10 @@ client.on('interactionCreate', async interaction => {
                 if (game.chess.isCheckmate()) {
                     const winner = game.chess.turn() === 'w' ? game.black : game.white;
                     const loser = winner === game.white ? game.black : game.white;
-                    await updateLeaderboard('chess', winner, loser, false);
+                    await updateLeaderboard('chess', interaction.guildId, winner, loser, false);
                     resultMsg = `🏆 Şah Mat! <@${winner}> kazandı.`;
                 } else {
-                    await updateLeaderboard('chess', game.white, game.black, true);
+                    await updateLeaderboard('chess', interaction.guildId, game.white, game.black, true);
                     resultMsg = '🤝 Oyun berabere bitti.';
                 }
                 activeChessGames.delete(gameId);
