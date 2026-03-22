@@ -163,27 +163,28 @@ async function generateChessImage(fen) {
     const rawBuffer = await imageGenerator.generateBuffer();
 
     const img = await loadImage(rawBuffer);
-    const canvas = createCanvas(img.width + 30, img.height + 30);
+    const padding = 40;
+    const canvas = createCanvas(img.width + padding, img.height + padding);
     const ctx = canvas.getContext('2d');
 
     ctx.fillStyle = '#2b2d31';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(img, 30, 0);
+    ctx.drawImage(img, padding / 2, 0);
 
     ctx.fillStyle = '#ffffff';
-    ctx.font = '16px Arial';
+    ctx.font = 'bold 20px Arial';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
     const squareSize = img.width / 8;
 
     for (let i = 0; i < 8; i++) {
-        ctx.fillText(8 - i, 15, (i * squareSize) + (squareSize / 2));
+        ctx.fillText(8 - i, padding / 4, (i * squareSize) + (squareSize / 2));
     }
 
     const letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
     for (let i = 0; i < 8; i++) {
-        ctx.fillText(letters[i], 30 + (i * squareSize) + (squareSize / 2), img.height + 15);
+        ctx.fillText(letters[i], (padding / 2) + (i * squareSize) + (squareSize / 2), img.height + (padding / 2));
     }
 
     return new AttachmentBuilder(canvas.toBuffer(), { name: 'chess.png' });
