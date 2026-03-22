@@ -171,55 +171,44 @@ async function generateChessImage(fen) {
     const imageGenerator = new ChessImageGenerator();
     await imageGenerator.loadFEN(fen);
     const rawBuffer = await imageGenerator.generateBuffer();
-
     const img = await loadImage(rawBuffer);
-    const padding = 40;
+    const padding = 60;
     const canvas = createCanvas(img.width + padding, img.height + padding);
     const ctx = canvas.getContext('2d');
-
     ctx.fillStyle = '#2b2d31';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(img, padding / 2, 0);
-
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 20px Arial';
+    ctx.font = 'bold 22px Arial';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-
     const squareSize = img.width / 8;
-
     for (let i = 0; i < 8; i++) {
         ctx.fillText(8 - i, padding / 4, (i * squareSize) + (squareSize / 2));
     }
-
     const letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
     for (let i = 0; i < 8; i++) {
-        ctx.fillText(letters[i], (padding / 2) + (i * squareSize) + (squareSize / 2), img.height + (padding / 2));
+        ctx.fillText(letters[i], (padding / 2) + (i * squareSize) + (squareSize / 2), img.height + (padding / 3));
     }
-
     return new AttachmentBuilder(canvas.toBuffer(), { name: 'chess.png' });
 }
 
 async function generateXoxImage(board) {
     const canvas = createCanvas(300, 300);
     const ctx = canvas.getContext('2d');
-    
     ctx.fillStyle = '#2b2d31';
     ctx.fillRect(0, 0, 300, 300);
     ctx.strokeStyle = '#ffffff';
     ctx.lineWidth = 5;
-    
     ctx.beginPath();
     ctx.moveTo(100, 0); ctx.lineTo(100, 300);
     ctx.moveTo(200, 0); ctx.lineTo(200, 300);
     ctx.moveTo(0, 100); ctx.lineTo(300, 100);
     ctx.moveTo(0, 200); ctx.lineTo(300, 200);
     ctx.stroke();
-    
     ctx.font = '80px Arial';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    
     for (let i = 0; i < 9; i++) {
         const x = (i % 3) * 100 + 50;
         const y = Math.floor(i / 3) * 100 + 50;
@@ -320,7 +309,6 @@ async function endAfkGame(interactionOrMessage, gameId, type) {
 
 async function updateLeaderboard(type, guildId, winnerId, loserId, isDraw) {
     const model = type === 'chess' ? ChessLeaderboard : XoxLeaderboard;
-    
     if (isDraw) {
         const [winner] = await model.findOrCreate({ where: { userId: winnerId, guildId: guildId } });
         const [loser] = await model.findOrCreate({ where: { userId: loserId, guildId: guildId } });
@@ -343,34 +331,25 @@ async function finalizeCustomRoleSetup(guild, member, setupData, iconUrl, replyM
             reason: `${member.user.tag} için özel takviyeci rolü oluşturuldu.`,
             permissions: []
         };
-
         if (iconUrl && guild.features.includes('ROLE_ICONS')) {
             options.icon = iconUrl;
         }
-
         const newRole = await guild.roles.create(options);
-        
         if (targetRole) {
             await newRole.setPosition(targetRole.position + 1).catch(() => {});
         }
-
         await member.roles.add(newRole);
         userCustomRoles.set(member.id, newRole.id);
-        
         const [roleRecord, created] = await CustomRole.findOrCreate({
             where: { userId: member.id },
             defaults: { roleId: newRole.id }
         });
-
         if (!created) {
             roleRecord.roleId = newRole.id;
             await roleRecord.save();
         }
-
         customRoleSetup.delete(member.id);
-
         const successEmbed = createEmbed('Özel Rol Oluşturuldu 🎉', `**${setupData.name}** isimli özel rolünüz başarıyla oluşturuldu ve size verildi!`, 0x2ECC71);
-
         await replyMethod(successEmbed);
         await sendLog(guild, '✨ Özel Rol Oluşturuldu', `**Oluşturan:** ${member.user.tag}\n**Rol Adı:** ${setupData.name}\n**Renk:** ${setupData.color}`, 0x2ECC71);
     } catch (error) {
@@ -385,11 +364,9 @@ function getParticipantsPageData(gwData, page) {
     const perPage = 10;
     const maxPage = Math.ceil(total / perPage) || 1;
     page = Math.max(1, Math.min(page, maxPage));
-
     const start = (page - 1) * perPage;
     const end = start + perPage;
     const currentSlice = participants.slice(start, end);
-
     let desc = `Bu liste **${gwData.title}** adlı çekilişe katılan üyeleri göstermektedir:\n\n`;
     if (total === 0) {
         desc += "Henüz katılımcı bulunmamaktadır.";
@@ -399,33 +376,26 @@ function getParticipantsPageData(gwData, page) {
         });
     }
     desc += `\n**Toplam Katılımcı:** ${total}`;
-
     const embed = new EmbedBuilder()
         .setTitle(`Çekiliş Katılımcıları (Sayfa ${page}/${maxPage})`)
         .setDescription(desc)
         .setColor(0x2B2D31);
-
     const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId(`gwp_prev_${gwData.messageId}_${page}`).setEmoji('◀️').setStyle(ButtonStyle.Secondary).setDisabled(page === 1),
         new ButtonBuilder().setCustomId(`gwp_next_${gwData.messageId}_${page}`).setEmoji('▶️').setStyle(ButtonStyle.Secondary).setDisabled(page === maxPage)
     );
-
     return { embeds: [embed], components: [row] };
 }
 
 async function endGiveaway(messageId) {
     const gwData = activeGiveaways.get(messageId);
     if (!gwData) return;
-
     const channel = client.channels.cache.get(gwData.channelId);
     if (!channel) return;
-
     const msg = await channel.messages.fetch(messageId).catch(() => null);
     if (!msg) return;
-
     const participantsArray = Array.from(gwData.participants);
     let winnersText = '';
-
     if (participantsArray.length === 0) {
         winnersText = 'Yeterli katılım olmadığı için çekiliş iptal edildi.';
     } else {
@@ -437,30 +407,24 @@ async function endGiveaway(messageId) {
         }
         winnersText = `**Kazananlar:** ${winners.join(', ')}`;
     }
-
     const endEmbed = new EmbedBuilder()
         .setTitle(`🎉 ${gwData.title} (Sona Erdi)`)
         .setDescription(`**Açıklama:** ${gwData.desc}\n\n${winnersText}\n**Başlatan:** <@${gwData.host}>`)
         .setColor(0x2B2D31);
-
     const disabledJoinButton = new ButtonBuilder()
         .setCustomId('btn_gw_join')
         .setLabel(`🎉 ${gwData.participants.size}`)
         .setStyle(ButtonStyle.Secondary)
         .setDisabled(true);
-
     const disabledPartButton = new ButtonBuilder()
         .setCustomId('btn_gw_participants')
         .setLabel('👥 Katılımcılar')
         .setStyle(ButtonStyle.Secondary)
         .setDisabled(true);
-
     await msg.edit({ embeds: [endEmbed], components: [new ActionRowBuilder().addComponents(disabledJoinButton, disabledPartButton)] });
-
     if (gwData.participants.size > 0) {
         await msg.channel.send(`Tebrikler ${winnersText}! **${gwData.title}** çekilişini kazandınız!`);
     }
-
     activeGiveaways.delete(messageId);
     await Giveaway.update({ status: 'ended' }, { where: { messageId: messageId } }).catch(() => {});
 }
@@ -471,23 +435,18 @@ client.on('clientReady', async () => {
         type: ActivityType.Streaming,
         url: 'https://www.twitch.tv/discord'
     });
-
     if (process.env.DATABASE_URL) {
         try {
             await sequelize.sync({ alter: true });
-            
             const settings = await GuildSettings.findAll();
             settings.forEach(s => {
                 if (s.linkProtection) linkProtection.add(s.guildId);
                 if (s.autoRole) autoRoles.set(s.guildId, s.autoRole);
             });
-
             const roles = await CustomRole.findAll();
             roles.forEach(r => userCustomRoles.set(r.userId, r.roleId));
-
             const customMsgs = await CustomMessage.findAll();
             customMsgs.forEach(m => customUserMessages.set(m.userId, m.replyText));
-
             const giveaways = await Giveaway.findAll({ where: { status: 'active' } });
             const now = Date.now();
             giveaways.forEach(g => {
@@ -500,7 +459,6 @@ client.on('clientReady', async () => {
                     desc: g.desc,
                     host: g.host
                 });
-
                 const remaining = g.endsAt - now;
                 if (remaining <= 0) {
                     endGiveaway(g.messageId);
@@ -510,14 +468,12 @@ client.on('clientReady', async () => {
             });
         } catch (error) {}
     }
-
     client.guilds.cache.forEach(async guild => {
         try {
             const firstInvites = await guild.invites.fetch();
             guildInvites.set(guild.id, new Map(firstInvites.map(invite => [invite.code, invite.uses])));
         } catch (error) {}
     });
-
     const voiceChannel = client.channels.cache.get(BOT_VOICE_CHANNEL_ID);
     if (voiceChannel) {
         joinVoiceChannel({
@@ -527,7 +483,6 @@ client.on('clientReady', async () => {
             selfDeaf: true
         });
     }
-
     setInterval(() => {
         const checkVoiceChannel = client.channels.cache.get(BOT_VOICE_CHANNEL_ID);
         if (checkVoiceChannel) {
@@ -706,16 +661,13 @@ client.on('guildMemberAdd', async member => {
     try {
         const newInvites = await member.guild.invites.fetch();
         const oldInvites = guildInvites.get(member.guild.id) || new Map();
-        
         const invite = newInvites.find(i => {
             const oldUses = oldInvites.get(i.code) || 0;
             return i.uses > oldUses;
         });
-
         if (invite && invite.inviter) {
             userInvites.set(member.id, invite.inviter.id);
         }
-
         guildInvites.set(member.guild.id, new Map(newInvites.map(i => [i.code, i.uses])));
     } catch (error) {}
 
@@ -758,7 +710,6 @@ client.on('guildBanRemove', async ban => {
 client.on('guildMemberRemove', async member => {
     const fetchedLogs = await member.guild.fetchAuditLogs({ limit: 1, type: AuditLogEvent.MemberKick });
     const kickLog = fetchedLogs.entries.first();
-    
     const inviterId = userInvites.get(member.id);
     const inviterText = inviterId ? `<@${inviterId}>` : 'Bilinmiyor';
 
@@ -771,7 +722,6 @@ client.on('guildMemberRemove', async member => {
             await leaveChannel.send({ embeds: [leaveEmbed] }).catch(() => {});
         }
     }
-    
     userInvites.delete(member.id);
 
     for (const [msgId, gw] of activeGiveaways.entries()) {
@@ -781,7 +731,6 @@ client.on('guildMemberRemove', async member => {
                 { participants: Array.from(gw.participants) },
                 { where: { messageId: msgId } }
             ).catch(() => {});
-            
             const channel = client.channels.cache.get(gw.channelId);
             if (channel) {
                 const msg = await channel.messages.fetch(msgId).catch(() => null);
@@ -826,10 +775,8 @@ client.on('messageCreate', async message => {
 
     if (customRoleSetup.has(message.author.id)) {
         const setupData = customRoleSetup.get(message.author.id);
-        
         if (setupData.step === 'name') {
             const roleName = message.content;
-            
             const row1 = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId('color_FF0000').setLabel('Kırmızı').setStyle(ButtonStyle.Danger),
                 new ButtonBuilder().setCustomId('color_00FF00').setLabel('Yeşil').setStyle(ButtonStyle.Success),
@@ -854,9 +801,7 @@ client.on('messageCreate', async message => {
                 new ButtonBuilder().setCustomId('color_008080').setLabel('Teal').setStyle(ButtonStyle.Secondary),
                 new ButtonBuilder().setCustomId('color_4B0082').setLabel('Lacivert').setStyle(ButtonStyle.Secondary)
             );
-
             const colorEmbed = createEmbed('Özel Rol Kurulumu (Adım 2/3)', `Harika! Rol adını **${roleName}** olarak belirlediniz. Lütfen aşağıdaki butonlardan rolünüzün rengini seçin.`, 0x5865F2);
-            
             message.delete().catch(() => {});
             setupData.originalInteraction.editReply({ embeds: [colorEmbed], components: [row1, row2, row3, row4] });
             customRoleSetup.set(message.author.id, { ...setupData, step: 'color', name: roleName });
@@ -884,7 +829,6 @@ client.on('messageCreate', async message => {
     }
     
     const lowerContent = message.content.toLowerCase();
-
     const otoYanitlar = {
         'sa': 'Aleykümselam, hoş geldin!',
         'selamünaleyküm': 'Aleykümselam, hoş geldin!',
@@ -900,22 +844,16 @@ client.on('messageCreate', async message => {
     
     if (linkProtection.has(message.guild.id)) {
         if (message.member.permissions.has(PermissionsBitField.Flags.Administrator)) return;
-        
         const discordInviteRegex = /(?:https?:\/\/)?(?:www\.)?(?:discord\.gg\/|discord(?:app)?\.com\/invite\/)([a-zA-Z0-9-]+)/gi;
-        
         const allowedInvites = ['azuron']; 
-
         const matches = [...message.content.matchAll(discordInviteRegex)];
-        
         const hasIllegalLink = matches.some(match => !allowedInvites.includes(match[1].toLowerCase()));
         
         if (hasIllegalLink) {
             await message.delete().catch(() => {});
-            
             const warningMsg = await message.channel.send({
                 embeds: [createErrorEmbed(`<@${message.author.id}>, **Reklam:** Bu sunucuda başka Discord sunucularının davet bağlantılarını paylaşmak yasaktır!`)]
             });
-            
             setTimeout(() => warningMsg.delete().catch(() => {}), 5000);
         }
     }
@@ -923,7 +861,6 @@ client.on('messageCreate', async message => {
 
 client.on('voiceStateUpdate', async (oldState, newState) => {
     const generatorChannelId = await getGeneratorChannelId(newState.guild);
-
     if (newState.channelId === generatorChannelId) {
         const guild = newState.guild;
         const user = newState.member.user;
@@ -1011,20 +948,17 @@ client.on('interactionCreate', async interaction => {
 
         if (commandName === 'satranç') {
             const sub = options.getSubcommand();
-                if (sub === 'oyna') {
-            const target = options.getUser('rakip');
-    
-            if (isUserInGame(interaction.user.id)) {
-                return interaction.reply({ content: 'Zaten aktif bir oyununuz var! Bitmeden yenisini açamazsınız.', flags: MessageFlags.Ephemeral });
+            if (sub === 'oyna') {
+                const target = options.getUser('rakip');
+                
+                if (isUserInGame(interaction.user.id)) {
+                    return interaction.reply({ content: 'Zaten aktif bir oyununuz var! Bitmeden yenisini açamazsınız.', flags: MessageFlags.Ephemeral });
                 }
-              if (target.id !== client.user.id && isUserInGame(target.id)) {
-                return interaction.reply({ content: 'Rakibiniz şu anda başka bir oyunda, ona istek atamazsınız!', flags: MessageFlags.Ephemeral });
+                if (target.id !== client.user.id && isUserInGame(target.id)) {
+                    return interaction.reply({ content: 'Rakibiniz şu anda başka bir oyunda, ona istek atamazsınız!', flags: MessageFlags.Ephemeral });
                 }
-               if (target.id === interaction.user.id || (target.bot && target.id !== client.user.id)) {
-                return interaction.reply({ content: 'Geçersiz rakip.', flags: MessageFlags.Ephemeral });
-               }
                 if (target.id === interaction.user.id || (target.bot && target.id !== client.user.id)) {
-                    return interaction.reply({ content: 'Kendinizle veya diğer botlarla oynayamazsınız.', flags: MessageFlags.Ephemeral });
+                    return interaction.reply({ content: 'Geçersiz rakip. Sadece diğer kullanıcılarla veya bot ile (@Azuron) oynayabilirsiniz.', flags: MessageFlags.Ephemeral });
                 }
         
                 const gameId = `${interaction.user.id}_${target.id}_${Date.now()}`;
@@ -1067,12 +1001,12 @@ client.on('interactionCreate', async interaction => {
             if (sub === 'oyna') {
                 const target = options.getUser('rakip');
 
-                 if (isUserInGame(interaction.user.id)) {
-                   return interaction.reply({ content: 'Zaten aktif bir oyununuz var! Bitmeden yenisini açamazsınız.', flags: MessageFlags.Ephemeral });
+                if (isUserInGame(interaction.user.id)) {
+                    return interaction.reply({ content: 'Zaten aktif bir oyununuz var! Bitmeden yenisini açamazsınız.', flags: MessageFlags.Ephemeral });
                 } 
                 if (target.id !== client.user.id && isUserInGame(target.id)) {
-                  return interaction.reply({ content: 'Rakibiniz şu anda başka bir oyunda, ona istek atamazsınız!', flags: MessageFlags.Ephemeral });
-                 }
+                    return interaction.reply({ content: 'Rakibiniz şu anda başka bir oyunda, ona istek atamazsınız!', flags: MessageFlags.Ephemeral });
+                }
                 if (target.id === interaction.user.id || (target.bot && target.id !== client.user.id)) {
                     return interaction.reply({ content: 'Kendinizle veya diğer botlarla oynayamazsınız.', flags: MessageFlags.Ephemeral });
                 }
@@ -1110,38 +1044,31 @@ client.on('interactionCreate', async interaction => {
 
         if (commandName === 'çekiliş') {
             const modal = new ModalBuilder().setCustomId('modal_giveaway').setTitle('Çekiliş Başlat');
-
             const titleInput = new TextInputBuilder().setCustomId('gw_title').setLabel('Başlık').setStyle(TextInputStyle.Short).setRequired(true);
             const descInput = new TextInputBuilder().setCustomId('gw_desc').setLabel('Açıklama').setStyle(TextInputStyle.Paragraph).setRequired(true);
             const winnersInput = new TextInputBuilder().setCustomId('gw_winners').setLabel('Kazanan Sayısı').setStyle(TextInputStyle.Short).setRequired(true);
             const durationInput = new TextInputBuilder().setCustomId('gw_duration').setLabel('Süre (Saat)').setStyle(TextInputStyle.Short).setRequired(true);
-
             modal.addComponents(
                 new ActionRowBuilder().addComponents(titleInput),
                 new ActionRowBuilder().addComponents(descInput),
                 new ActionRowBuilder().addComponents(winnersInput),
                 new ActionRowBuilder().addComponents(durationInput)
             );
-
             await interaction.showModal(modal);
         }
 
         if (commandName === 'yeniden-çek') {
             const messageId = options.getString('mesaj_id');
             const gwData = await Giveaway.findOne({ where: { messageId: messageId, status: 'ended' } });
-            
             if (!gwData) {
                 return interaction.reply({ content: 'Belirtilen ID ile sona ermiş bir çekiliş bulunamadı.', flags: MessageFlags.Ephemeral });
             }
-
             const participantsArray = gwData.participants;
             if (!participantsArray || participantsArray.length === 0) {
                 return interaction.reply({ content: 'Bu çekilişe katılan kimse olmadığı için yeniden çekiliş yapılamaz.', flags: MessageFlags.Ephemeral });
             }
-
             const randomIndex = Math.floor(Math.random() * participantsArray.length);
             const winner = `<@${participantsArray[randomIndex]}>`;
-
             const channel = client.channels.cache.get(gwData.channelId);
             if (channel) {
                 const msg = await channel.messages.fetch(messageId).catch(() => null);
@@ -1150,7 +1077,6 @@ client.on('interactionCreate', async interaction => {
                     return interaction.reply({ content: 'Yeniden çekiliş başarıyla yapıldı ve kanala gönderildi.', flags: MessageFlags.Ephemeral });
                 }
             }
-            
             return interaction.reply({ content: `Çekiliş mesajı bulunamadı ancak kazanan: ${winner}`, flags: MessageFlags.Ephemeral });
         }
 
@@ -1160,7 +1086,6 @@ client.on('interactionCreate', async interaction => {
 
         if (commandName === 'medya') {
             let originalUrl = options.getString('link');
-            
             let urlMatch = originalUrl.match(/https?:\/\/[^\s]+/i);
             if (!urlMatch) {
                 if (!originalUrl.startsWith('http')) {
@@ -1169,20 +1094,17 @@ client.on('interactionCreate', async interaction => {
             } else {
                 originalUrl = urlMatch[0];
             }
-
             let parsedUrl;
             try {
                 parsedUrl = new URL(originalUrl);
             } catch(e) {
                 return interaction.reply({ content: 'Lütfen geçerli bir URL girin.', flags: MessageFlags.Ephemeral });
             }
-
             if (parsedUrl.hostname.includes('tiktok.com')) {
                 parsedUrl.hostname = 'tnktok.com';
             } else {
                 return interaction.reply({ content: 'Lütfen geçerli bir TikTok linki girin.', flags: MessageFlags.Ephemeral });
             }
-
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder()
                     .setLabel('Bilgi')
@@ -1194,7 +1116,6 @@ client.on('interactionCreate', async interaction => {
                     .setStyle(ButtonStyle.Danger)
                     .setEmoji('🗑️')
             );
-
             return interaction.reply({ content: parsedUrl.toString(), components: [row] });
         }
 
@@ -1236,42 +1157,31 @@ client.on('interactionCreate', async interaction => {
 
         if (commandName === 'özel') {
             const sub = options.getSubcommand();
-            
             if (sub === 'mesaj-ayarla') {
                 if (!member.permissions.has(PermissionsBitField.Flags.Administrator)) {
                     return interaction.reply({ embeds: [createErrorEmbed('Bu komutu sadece yöneticiler kullanabilir.')], flags: MessageFlags.Ephemeral });
                 }
-
                 const targetUser = options.getUser('kullanici');
                 const replyMsg = options.getString('mesaj');
-
                 await CustomMessage.upsert({ userId: targetUser.id, replyText: replyMsg });
                 customUserMessages.set(targetUser.id, replyMsg);
-
                 return interaction.reply({ embeds: [createEmbed('Özel Mesaj Ayarlandı', `<@${targetUser.id}> bota etiket attığında artık şu yanıt verilecek:\n\n${replyMsg}`, 0x2ECC71)], flags: MessageFlags.Ephemeral });
             }
-
             if (sub === 'mesaj-sil') {
                 if (!member.permissions.has(PermissionsBitField.Flags.Administrator)) {
                     return interaction.reply({ embeds: [createErrorEmbed('Bu komutu sadece yöneticiler kullanabilir.')], flags: MessageFlags.Ephemeral });
                 }
-
                 const targetUser = options.getUser('kullanici');
-
                 if (!customUserMessages.has(targetUser.id)) {
                     return interaction.reply({ embeds: [createErrorEmbed('Bu kullanıcının sistemde kayıtlı özel bir mesajı bulunmuyor.')], flags: MessageFlags.Ephemeral });
                 }
-
                 await CustomMessage.destroy({ where: { userId: targetUser.id } });
                 customUserMessages.delete(targetUser.id);
-
                 return interaction.reply({ embeds: [createEmbed('Özel Mesaj Silindi', `<@${targetUser.id}> kullanıcısının özel mesajı sistemden kaldırıldı.`, 0x2ECC71)], flags: MessageFlags.Ephemeral });
             }
-
             if (!member.premiumSince && !member.permissions.has(PermissionsBitField.Flags.Administrator)) {
                 return interaction.reply({ embeds: [createErrorEmbed('Bu komutu kullanabilmek için sunucuya takviye (boost) yapmanız gerekmektedir.')], flags: MessageFlags.Ephemeral });
             }
-
             if (sub === 'rol-ayarla') {
                 if (userCustomRoles.has(member.id)) {
                     const existingRoleId = userCustomRoles.get(member.id);
@@ -1283,13 +1193,10 @@ client.on('interactionCreate', async interaction => {
                         await CustomRole.destroy({ where: { userId: member.id } }).catch(() => {});
                     }
                 }
-
                 await interaction.deferReply({ flags: MessageFlags.Ephemeral });
                 const setupEmbed = createEmbed('Özel Rol Kurulumu (Adım 1/3)', 'Lütfen oluşturmak istediğiniz özel rolün adını bu kanala yazın.', 0x5865F2);
                 await interaction.editReply({ embeds: [setupEmbed] });
-
                 customRoleSetup.set(member.id, { step: 'name', originalInteraction: interaction });
-
                 setTimeout(() => {
                     if (customRoleSetup.has(member.id) && customRoleSetup.get(member.id).step === 'name') {
                         customRoleSetup.delete(member.id);
@@ -1297,28 +1204,22 @@ client.on('interactionCreate', async interaction => {
                     }
                 }, 60000);
             }
-
             if (sub === 'rol-sil') {
                 if (!userCustomRoles.has(member.id)) {
                     return interaction.reply({ embeds: [createErrorEmbed('Size ait silinecek özel bir rol bulunamadı.')], flags: MessageFlags.Ephemeral });
                 }
-
                 const roleId = userCustomRoles.get(member.id);
                 const role = guild.roles.cache.get(roleId);
-
                 if (!role) {
                     userCustomRoles.delete(member.id);
                     await CustomRole.destroy({ where: { userId: member.id } }).catch(() => {});
                     return interaction.reply({ embeds: [createErrorEmbed('Rol sunucuda bulunamadı, hafızadan temizlendi.')], flags: MessageFlags.Ephemeral });
                 }
-
                 const confirmEmbed = createEmbed('Özel Rol Silme Onayı', `**${role.name}** isimli özel rolünüzü kalıcı olarak silmek istediğinize emin misiniz?`, 0xE74C3C);
-                
                 const confirmRow = new ActionRowBuilder().addComponents(
                     new ButtonBuilder().setCustomId(`confirm_delete_${roleId}`).setLabel('Evet, Sil').setStyle(ButtonStyle.Danger),
                     new ButtonBuilder().setCustomId('cancel_delete').setLabel('İptal').setStyle(ButtonStyle.Secondary)
                 );
-
                 await interaction.reply({ embeds: [confirmEmbed], components: [confirmRow], flags: MessageFlags.Ephemeral });
             }
         }
@@ -1328,14 +1229,12 @@ client.on('interactionCreate', async interaction => {
             if (sub === 'ayarla') {
                 const targetRole = options.getRole('rol');
                 const guildId = guild.id;
-
                 if (targetRole.position >= guild.members.me.roles.highest.position) {
                     return interaction.reply({ 
                         embeds: [createErrorEmbed(`**İşlem Başarısız:** ${targetRole} rolü benim rollerimden daha üstte veya aynı sırada. Lütfen sunucu ayarlarından benim rolümü daha yukarı taşıyın.`)], 
                         flags: MessageFlags.Ephemeral 
                     });
                 }
-
                 if (autoRoles.get(guildId) === targetRole.id) {
                     autoRoles.delete(guildId);
                     await GuildSettings.upsert({ guildId: guildId, autoRole: null });
@@ -1357,7 +1256,6 @@ client.on('interactionCreate', async interaction => {
             const durationHours = options.getInteger('sure');
             const durationMs = durationHours * 3600000;
             const endTime = Math.floor(Date.now() / 1000) + (durationHours * 3600);
-
             const formEmbed = new EmbedBuilder()
                 .setTitle('🛡️ Moderatör Başvuru Formu')
                 .setDescription(`Sunucumuzun yetkili ekibine katılmak istiyorsan aşağıdaki butona tıklayarak başvuru formunu doldurabilirsin.\n\n⏳ **Son Başvuru:** <t:${endTime}:F> (<t:${endTime}:R>)\n\nLütfen soruları özenle ve dürüstçe yanıtlayın. Form **iki aşamalıdır**, ilk 5 soruyu gönderdikten sonra diğer 3 soru ekrana gelecektir.`)
@@ -1365,18 +1263,14 @@ client.on('interactionCreate', async interaction => {
                 .setThumbnail(guild.iconURL({ dynamic: true }) || client.user.displayAvatarURL())
                 .setTimestamp()
                 .setFooter({ text: 'Azuron Türkiye Yetkili Alımı', iconURL: client.user.displayAvatarURL() });
-
             const formButton = new ButtonBuilder()
                 .setCustomId('btn_open_mod_form')
                 .setLabel('Formu Doldur')
                 .setStyle(ButtonStyle.Success)
                 .setEmoji('📝');
-
             const row = new ActionRowBuilder().addComponents(formButton);
-
             await interaction.reply({ content: 'Form başarıyla kanala gönderildi.', flags: MessageFlags.Ephemeral });
             const formMessage = await interaction.channel.send({ embeds: [formEmbed], components: [row] });
-
             setTimeout(async () => {
                 try {
                     const fetchedMessage = await interaction.channel.messages.fetch(formMessage.id);
@@ -1387,9 +1281,7 @@ client.on('interactionCreate', async interaction => {
                             .setStyle(ButtonStyle.Secondary)
                             .setEmoji('🔒')
                             .setDisabled(true);
-                        
                         const disabledRow = new ActionRowBuilder().addComponents(disabledButton);
-                        
                         await fetchedMessage.edit({ components: [disabledRow] });
                     }
                 } catch (error) {}
@@ -1402,7 +1294,7 @@ client.on('interactionCreate', async interaction => {
                     { name: '🛠️ Genel Komutlar', value: '`/yardım`, `/öneri`, `/ping`, `/sunucu-bilgi`, `/kullanıcı-bilgi`, `/medya`' },
                     { name: '🛡️ Yönetici Komutları', value: '`/çekiliş`, `/yeniden-çek`, `/mod-form`, `/ses-panel`, `/bilet olustur`, `/link-engel`, `/kick`, `/ban`, `/mute`, `/unmute`, `/sil`, `/rol ayarla`, `/özel mesaj-ayarla`, `/özel mesaj-sil`' },
                     { name: '🚀 Takviyeci Komutları', value: '`/özel rol-ayarla`, `/özel rol-sil`' },
-                    { name: '🎉 Eğlence Komutları', value: '`/satranç`, `/xox`' },
+                    { name: '🎉 Eğlence Komutları', value: '`/satranç oyna`, `/satranç sıralama`, `/xox oyna`, `/xox sıralama`' },
                     { name: '🔊 Ses Sistemi', value: 'Özel oda kurmak için **Oda Oluştur** kanalına girmeniz yeterlidir.' },
                     { name: '🎫 Bilet Sistemi', value: '**bilet-oluştur** kanalındaki menüden destek bileti açabilirsiniz.' }
                 );
@@ -1422,7 +1314,6 @@ client.on('interactionCreate', async interaction => {
             if (!interaction.member.permissions.has(PermissionsBitField.Flags.ManageMessages)) {
                 return interaction.reply({ embeds: [createErrorEmbed('Mesajlar silinemedi, sunucuda Mesajları Yönet yetkisine sahip olmalısınız.')], flags: MessageFlags.Ephemeral });
             }
-
             const miktar = options.getInteger('miktar');
             try {
                 const silinenler = await interaction.channel.bulkDelete(miktar, true);
@@ -1461,7 +1352,6 @@ client.on('interactionCreate', async interaction => {
             const sub = options.getSubcommand();
             if (sub === 'olustur') {
                 await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-
                 const existingCategory = guild.channels.cache.find(c =>
                     c.name === '🎫 Bilet Sistemi' && c.type === ChannelType.GuildCategory
                 );
@@ -1470,12 +1360,10 @@ client.on('interactionCreate', async interaction => {
                         embeds: [createErrorEmbed('Bilet sistemi zaten kurulu. Lütfen mevcut **🎫 Bilet Sistemi** kategorisini kontrol edin.')]
                     });
                 }
-
                 const ticketCategory = await guild.channels.create({
                     name: '🎫 Bilet Sistemi',
                     type: ChannelType.GuildCategory
                 });
-
                 const ticketSetupChannel = await guild.channels.create({
                     name: 'bilet-oluştur',
                     type: ChannelType.GuildText,
@@ -1484,7 +1372,6 @@ client.on('interactionCreate', async interaction => {
                         { id: guild.id, deny: [PermissionsBitField.Flags.SendMessages], allow: [PermissionsBitField.Flags.ViewChannel] }
                     ]
                 });
-
                 const supportEmbed = new EmbedBuilder()
                     .setTitle('🎫 Destek Sistemi')
                     .setDescription(
@@ -1499,7 +1386,6 @@ client.on('interactionCreate', async interaction => {
                     .setTimestamp()
                     .setFooter({ text: 'Azuron Türkiye Destek Sistemi', iconURL: client.user.displayAvatarURL() })
                     .setThumbnail(guild.iconURL({ dynamic: true }) || client.user.displayAvatarURL());
-
                 const ticketOpenMenu = new StringSelectMenuBuilder()
                     .setCustomId('ticket_open_menu')
                     .setPlaceholder('📋 Bilet türünü seçin...')
@@ -1520,11 +1406,8 @@ client.on('interactionCreate', async interaction => {
                             .setValue('open_suggestion_ticket')
                             .setEmoji('💡')
                     );
-
                 const ticketMenuRow = new ActionRowBuilder().addComponents(ticketOpenMenu);
-
                 await ticketSetupChannel.send({ embeds: [supportEmbed], components: [ticketMenuRow] });
-
                 await interaction.editReply({
                     embeds: [createEmbed(
                         '✅ Bilet Sistemi Kuruldu',
@@ -1595,7 +1478,7 @@ client.on('interactionCreate', async interaction => {
 
     if (interaction.isButton()) {
         if (interaction.customId.startsWith('chess_move_')) {
-            const gameId = interaction.customId.replace('chess_move_', '');
+            const gameId = interaction.customId.split('chess_move_')[1];
             const game = activeChessGames.get(gameId);
             
             if (!game) return interaction.reply({ content: 'Bu oyun sona ermiş.', flags: MessageFlags.Ephemeral });
@@ -1612,7 +1495,7 @@ client.on('interactionCreate', async interaction => {
         }
         
         if (interaction.customId.startsWith('chess_resign_')) {
-            const gameId = interaction.customId.replace('chess_resign_', '');
+            const gameId = interaction.customId.split('chess_resign_')[1];
             const game = activeChessGames.get(gameId);
             
             if (!game) return interaction.reply({ content: 'Oyun zaten bitti.', flags: MessageFlags.Ephemeral });
@@ -1694,7 +1577,7 @@ client.on('interactionCreate', async interaction => {
         }
         
         if (interaction.customId.startsWith('xox_resign_')) {
-            const gameId = interaction.customId.replace('xox_resign_', '');
+            const gameId = interaction.customId.split('xox_resign_')[1];
             const game = activeXoxGames.get(gameId);
             
             if (!game) return interaction.reply({ content: 'Oyun zaten bitti.', flags: MessageFlags.Ephemeral });
@@ -1743,7 +1626,7 @@ client.on('interactionCreate', async interaction => {
         }
 
         if (interaction.customId.startsWith('btn_gw_leave_')) {
-            const msgId = interaction.customId.replace('btn_gw_leave_', '');
+            const msgId = interaction.customId.split('btn_gw_leave_')[1];
             const gw = activeGiveaways.get(msgId);
             if (!gw) return interaction.update({ content: 'Bu çekiliş artık aktif değil.', components: [] });
 
@@ -1799,7 +1682,7 @@ client.on('interactionCreate', async interaction => {
         }
 
         if (interaction.customId.startsWith('del_media_')) {
-            const ownerId = interaction.customId.replace('del_media_', '');
+            const ownerId = interaction.customId.split('del_media_')[1];
             if (interaction.user.id === ownerId || interaction.member.permissions.has(PermissionsBitField.Flags.ManageMessages)) {
                 await interaction.message.delete().catch(() => {});
             } else {
@@ -1849,7 +1732,7 @@ client.on('interactionCreate', async interaction => {
         }
 
         if (interaction.customId.startsWith('confirm_delete_')) {
-            const roleId = interaction.customId.replace('confirm_delete_', '');
+            const roleId = interaction.customId.split('confirm_delete_')[1];
             const guild = interaction.guild;
             const role = guild.roles.cache.get(roleId);
 
@@ -2218,7 +2101,7 @@ client.on('interactionCreate', async interaction => {
 
     if (interaction.isModalSubmit()) {
         if (interaction.customId.startsWith('modal_chess_')) {
-            const gameId = interaction.customId.replace('modal_chess_', '');
+            const gameId = interaction.customId.split('modal_chess_')[1];
             const game = activeChessGames.get(gameId);
             
             if (!game) return interaction.reply({ content: 'Oyun süresi dolmuş veya bitmiş.', flags: MessageFlags.Ephemeral });
