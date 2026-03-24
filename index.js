@@ -2222,6 +2222,9 @@ async function getGeneratorChannelId(guild) {
     return c ? c.id : null;
 }
 
+client.on("debug", console.log);
+client.on("error", console.error);
+
 client.once('ready', () => {
     console.log(`Bot basariyla aktif oldu: ${client.user.tag}`);
 });
