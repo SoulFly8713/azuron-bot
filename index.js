@@ -786,6 +786,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
 });
 
 client.on('interactionCreate', async interaction => {
+    console.log(`[KOD] ${interaction.user.tag} kullanıcısı komut kullandı!`);
     if (interaction.isChatInputCommand()) {
         const { commandName, options, member, guild } = interaction;
 
