@@ -17,7 +17,9 @@ app.get("/", (req, res) => {
 
 app.listen(process.env.PORT || 3000, () => {});
 
-process.on('unhandledRejection', error => {});
+process.on('unhandledRejection', error => {
+    console.error("Hata:", error);
+});
 
 const sequelize = new Sequelize(process.env.DATABASE_URL, {
     dialect: 'postgres',
