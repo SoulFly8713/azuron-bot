@@ -82,7 +82,9 @@ const client = new Client({
     partials: [Partials.Channel]
 });
 
-client.on('error', error => {});
+client.on('error', error => {
+    console.error("Discord Bağlantı Hatası:", error);
+});
 
 const LOG_CHANNEL_ID = '1470356769653133368';
 const SUGGESTION_CHANNEL_ID = '1470356769653133368';
