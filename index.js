@@ -9,8 +9,8 @@ const { joinVoiceChannel, getVoiceConnection } = require('@discordjs/voice');
 const express = require("express");
 const { Sequelize, DataTypes } = require('sequelize');
 const { Chess } = require('chess.js');
-const { createCanvas, loadImage } = require('canvas');
 const ChessImageGenerator = require('chess-image-generator');
+const { createCanvas, loadImage } = require('canvas');
 
 const app = express();
 
@@ -125,6 +125,15 @@ function createEmbed(title, description, color = 0x5865F2) {
     return embed;
 }
 
+function createErrorEmbed(description) {
+    return new EmbedBuilder()
+        .setTitle('❌ İşlem Başarısız')
+        .setDescription(description)
+        .setColor(0xE74C3C)
+        .setTimestamp()
+        .setFooter({ text: 'Hata', iconURL: client.user.displayAvatarURL() });
+}
+
 async function addCoordinatesToBoard(boardBuffer) {
     const boardSize = 720;
     const margin = 40;
@@ -151,15 +160,6 @@ async function addCoordinatesToBoard(boardBuffer) {
     }
 
     return canvas.toBuffer();
-}
-
-function createErrorEmbed(description) {
-    return new EmbedBuilder()
-        .setTitle('❌ İşlem Başarısız')
-        .setDescription(description)
-        .setColor(0xE74C3C)
-        .setTimestamp()
-        .setFooter({ text: 'Hata', iconURL: client.user.displayAvatarURL() });
 }
 
 async function sendLog(guild, title, description, color = 0xE67E22) {
@@ -298,6 +298,32 @@ async function endGiveaway(messageId) {
 
     activeGiveaways.delete(messageId);
     await Giveaway.update({ status: 'ended' }, { where: { messageId: messageId } }).catch(() => {});
+}
+
+async function endChessTimeout(matchId) {
+    const gameData = activeChessGames.get(matchId);
+    if (!gameData) return;
+
+    const channel = client.channels.cache.get(gameData.channelId);
+    if (channel) {
+        const msg = await channel.messages.fetch(matchId).catch(() => null);
+        if (msg) {
+            const disabledRow = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId('dummy1').setLabel('Hamle Yap').setStyle(ButtonStyle.Primary).setDisabled(true),
+                new ButtonBuilder().setCustomId('dummy2').setLabel('Pes Et').setStyle(ButtonStyle.Danger).setDisabled(true)
+            );
+            await msg.edit({
+                content: `⏳ **Süre Doldu!** 15 dakika boyunca hamle yapılmadığı için maç berabere bitti.\nBeyazlar: <@${gameData.players.w}> | Siyahlar: <@${gameData.players.b}>`,
+                components: [disabledRow]
+            }).catch(() => {});
+        }
+    }
+    activeChessGames.delete(matchId);
+}
+
+async function getGeneratorChannelId(guild) {
+    const c = guild.channels.cache.find(c => c.name === '➕ Oda Oluştur' && c.type === ChannelType.GuildVoice);
+    return c ? c.id : null;
 }
 
 client.on('ready', async () => {
@@ -1348,15 +1374,18 @@ client.on('interactionCreate', async interaction => {
             });
 
             const matchId = interaction.message.id;
+            const timeout = setTimeout(() => endChessTimeout(matchId), 15 * 60 * 1000);
             
             activeChessGames.set(matchId, {
                 chess: chess,
                 generator: imageGenerator,
                 players: { w: challengerId, b: rakipId },
-                turn: 'w'
+                turn: 'w',
+                channelId: interaction.channel.id,
+                timeout: timeout
             });
 
-           await imageGenerator.loadFEN(chess.fen());
+            await imageGenerator.loadFEN(chess.fen());
             let buffer = await imageGenerator.generateBuffer();
             buffer = await addCoordinatesToBoard(buffer);
             const attachment = new AttachmentBuilder(buffer, { name: 'board.png' });
@@ -1402,7 +1431,7 @@ client.on('interactionCreate', async interaction => {
             const moveModal = new ModalBuilder().setCustomId(`modal_chess_${matchId}`).setTitle('Hamle Yap');
             const moveInput = new TextInputBuilder()
                 .setCustomId('move_input')
-                .setLabel('Hamleniz (Örn: e2e4 veya Nf3)')
+                .setLabel('Hamleniz (Örn: e7e5 veya b8c6)')
                 .setStyle(TextInputStyle.Short)
                 .setRequired(true);
 
@@ -1420,6 +1449,8 @@ client.on('interactionCreate', async interaction => {
             if (interaction.user.id !== gameData.players.w && interaction.user.id !== gameData.players.b) {
                 return interaction.reply({ content: 'Bu maçta değilsiniz.', flags: MessageFlags.Ephemeral });
             }
+
+            clearTimeout(gameData.timeout);
 
             const winnerId = interaction.user.id === gameData.players.w ? gameData.players.b : gameData.players.w;
             activeChessGames.delete(matchId);
@@ -1954,12 +1985,15 @@ client.on('interactionCreate', async interaction => {
             
             try {
                 const result = gameData.chess.move(moveText, { sloppy: true });
-                if (!result) throw new Error("Geçersiz hamle");
+                if (!result) throw new Error("error");
             } catch (e) {
-                return interaction.reply({ content: 'Geçersiz hamle! Lütfen doğru bir kare veya notasyon girin (Örn: e2e4).', flags: MessageFlags.Ephemeral });
+                return interaction.reply({ content: 'Geçersiz hamle! Lütfen harf kullanmadan sadece kareden kareye olacak şekilde bitişik yazın (Örn: e7e5, b8c6).', flags: MessageFlags.Ephemeral });
             }
 
             gameData.turn = gameData.chess.turn();
+
+            clearTimeout(gameData.timeout);
+            gameData.timeout = setTimeout(() => endChessTimeout(matchId), 15 * 60 * 1000);
 
             await interaction.deferUpdate();
 
@@ -1978,9 +2012,11 @@ client.on('interactionCreate', async interaction => {
 
             if (isCheckmate) {
                 content += `**ŞAH MAT!** Kazanan: <@${interaction.user.id}> 🎉`;
+                clearTimeout(gameData.timeout);
                 activeChessGames.delete(matchId);
             } else if (isDraw || isStalemate) {
                 content += `**Berabere!** Oyun berabere bitti.`;
+                clearTimeout(gameData.timeout);
                 activeChessGames.delete(matchId);
             } else if (isCheck) {
                 content += `**ŞAH!** Sıra: <@${gameData.players[gameData.turn]}>`;
