@@ -618,10 +618,19 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
 client.on('messageCreate', async message => {
     if (message.author.bot || !message.guild) return;
 
-    if (message.channel.id === '1452761329533190237') {
+ if (message.channel.id === '1452761329533190237') {
         try {
             const tersIsim = metniTersCevir(message.member?.displayName || message.author.username);
-            const tersMesaj = metniTersCevir(message.content);
+            
+            const kelimeler = message.content.split(/(\s+)/);
+            const islenenKelimeler = kelimeler.map(kelime => {
+                if (kelime.startsWith('http://') || kelime.startsWith('https://')) {
+                    return kelime;
+                }
+                return metniTersCevir(kelime);
+            });
+            const tersMesaj = islenenKelimeler.reverse().join('');
+            
             const avatarUrl = message.author.displayAvatarURL({ extension: 'png' });
 
             const webhooks = await message.channel.fetchWebhooks();
