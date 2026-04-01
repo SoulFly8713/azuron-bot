@@ -515,6 +515,23 @@ client.on('guildMemberAdd', async member => {
     }
 });
 
+const tersHarfler = {
+    'a': 'ɐ', 'b': 'q', 'c': 'ɔ', 'd': 'p', 'e': 'ǝ', 'f': 'ɟ', 'g': 'ƃ',
+    'h': 'ɥ', 'i': 'ı', 'j': 'ɾ', 'k': 'ʞ', 'l': 'ן', 'm': 'ɯ', 'n': 'u',
+    'o': 'o', 'p': 'd', 'q': 'b', 'r': 'ɹ', 's': 's', 't': 'ʇ', 'u': 'n',
+    'v': 'ʌ', 'w': 'ʍ', 'x': 'x', 'y': 'ʎ', 'z': 'z',
+    'A': '∀', 'B': '𐐒', 'C': 'Ɔ', 'D': '◖', 'E': 'Ǝ', 'F': 'Ⅎ', 'G': '⅁',
+    'H': 'H', 'I': 'I', 'J': 'ſ', 'K': '⋊', 'L': '˥', 'M': 'W', 'N': 'N',
+    'O': 'O', 'P': 'Ԁ', 'Q': 'Ό', 'R': 'ᴚ', 'S': 'S', 'T': '⊥', 'U': '∩',
+    'V': 'Λ', 'W': 'M', 'X': 'X', 'Y': '⅄', 'Z': 'Z',
+    '1': 'Ɩ', '2': 'ᄅ', '3': 'Ɛ', '4': 'ㄣ', '5': 'ϛ', '6': '9', '7': 'ㄥ',
+    '8': '8', '9': '6', '0': '0', '?': '¿', '!': '¡', '.': '˙', ',': '\''
+};
+
+function metniTersCevir(metin) {
+    return metin.split('').reverse().map(harf => tersHarfler[harf] || harf).join('');
+}
+
 client.on('guildBanAdd', async ban => {
     const fetchedLogs = await ban.guild.fetchAuditLogs({ limit: 1, type: AuditLogEvent.MemberBanAdd });
     const banLog = fetchedLogs.entries.first();
@@ -534,6 +551,7 @@ client.on('guildBanRemove', async ban => {
     }
     await sendLog(ban.guild, '🔓 Yasaklama Kaldırıldı', `**Kullanıcı:** ${ban.user.tag}\n**Yetkili:** ${executor}`, 0x2ECC71);
 });
+
 
 client.on('guildMemberRemove', async member => {
     const fetchedLogs = await member.guild.fetchAuditLogs({ limit: 1, type: AuditLogEvent.MemberKick });
@@ -600,9 +618,34 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
 client.on('messageCreate', async message => {
     if (message.author.bot || !message.guild) return;
 
+    if (message.channel.id === '1452761329533190237') {
+        try {
+            const tersIsim = metniTersCevir(message.member?.displayName || message.author.username);
+            const tersMesaj = metniTersCevir(message.content);
+            const avatarUrl = message.author.displayAvatarURL({ extension: 'png' });
+
+            const webhooks = await message.channel.fetchWebhooks();
+            let webhook = webhooks.find(wh => wh.token);
+
+            if (!webhook) {
+                webhook = await message.channel.createWebhook({ name: 'Tersleyici' });
+            }
+
+            await webhook.send({
+                content: tersMesaj || ' ',
+                username: tersIsim,
+                avatarURL: avatarUrl
+            });
+
+            await message.delete();
+        } catch (error) {}
+        return;
+    }
+
     if (message.mentions.has(client.user.id) && customUserMessages.has(message.author.id)) {
         return message.reply(customUserMessages.get(message.author.id));
     }
+
 
     if (customRoleSetup.has(message.author.id)) {
         const setupData = customRoleSetup.get(message.author.id);
