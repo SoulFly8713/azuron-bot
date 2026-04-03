@@ -107,6 +107,7 @@ const customUserMessages = new Map();
 
 const guildInvites = new Map();
 const userInvites = new Map();
+const tempVoiceChannels = new Set();
 
 function createEmbed(title, description, color = 0x5865F2) {
     const embed = new EmbedBuilder()
@@ -702,87 +703,91 @@ client.on('messageCreate', async message => {
 });
 
 client.on('voiceStateUpdate', async (oldState, newState) => {
-    const generatorChannelId = await getGeneratorChannelId(newState.guild);
+    const generatorChannelId = await getGeneratorChannelId(newState.guild);
 
-    if (newState.channelId === generatorChannelId) {
-        const guild = newState.guild;
-        const user = newState.member.user;
-        const category = newState.channel.parent;
-        const newChannel = await guild.channels.create({
-            name: `🔊 ${user.username}`,
-            type: ChannelType.GuildVoice,
-            parent: category,
-            permissionOverwrites: [
-                {
-                    id: user.id,
-                    allow: [PermissionsBitField.Flags.Connect, PermissionsBitField.Flags.ManageChannels, PermissionsBitField.Flags.MoveMembers]
-                },
-                {
-                    id: guild.id,
-                    allow: [PermissionsBitField.Flags.Connect]
-                }
-            ]
-        });
-        await newState.setChannel(newChannel);
+    if (newState.channelId === generatorChannelId) {
+        const guild = newState.guild;
+        const user = newState.member.user;
+        const category = newState.channel.parent;
+        const newChannel = await guild.channels.create({
+            name: `🔊 ${user.username}`,
+            type: ChannelType.GuildVoice,
+            parent: category,
+            permissionOverwrites: [
+                {
+                    id: user.id,
+                    allow: [PermissionsBitField.Flags.Connect, PermissionsBitField.Flags.ManageChannels, PermissionsBitField.Flags.MoveMembers]
+                },
+                {
+                    id: guild.id,
+                    allow: [PermissionsBitField.Flags.Connect]
+                }
+            ]
+        });
 
-        const embed = createEmbed(
-            `🔊 ${user.username} Yönetim Paneli`,
-            `Özel odanız başarıyla oluşturuldu. Aşağıdaki menüyü kullanarak odanızı yönetebilirsiniz.`,
-            0x3498DB
-        );
+        tempVoiceChannels.add(newChannel.id);
 
-        const settingsMenu = new StringSelectMenuBuilder()
-            .setCustomId('vc_settings')
-            .setPlaceholder('⚙️ Kanal Ayarları')
-            .addOptions(
-                new StringSelectMenuOptionBuilder().setLabel('İsim Değiştir').setValue('action_name').setEmoji('📝'),
-                new StringSelectMenuOptionBuilder().setLabel('Kişi Limiti').setValue('action_limit').setEmoji('🔢'),
-                new StringSelectMenuOptionBuilder().setLabel('Davet Et (ID)').setValue('action_invite_id').setEmoji('📩'),
-                new StringSelectMenuOptionBuilder().setLabel('Odadan At (ID)').setValue('action_kick_id').setEmoji('🚫'),
-                new StringSelectMenuOptionBuilder().setLabel('Odayı Devret (ID)').setValue('action_transfer').setEmoji('👑'),
-                new StringSelectMenuOptionBuilder().setLabel('Oda Yetkilisi Ekle (ID)').setValue('action_add_admin').setEmoji('🛡️'),
-                new StringSelectMenuOptionBuilder().setLabel('Kilitle').setValue('action_lock').setEmoji('🔒'),
-                new StringSelectMenuOptionBuilder().setLabel('Kilidi Aç').setValue('action_unlock').setEmoji('🔓'),
-                new StringSelectMenuOptionBuilder().setLabel('Detaylı Bilgi').setValue('action_info').setEmoji('📊'),
-                new StringSelectMenuOptionBuilder().setLabel('Odayı Sil').setValue('action_delete').setEmoji('🗑️')
-            );
+        await newState.setChannel(newChannel);
 
-        const row1 = new ActionRowBuilder().addComponents(settingsMenu);
-        await newChannel.send({ content: `<@${user.id}>`, embeds: [embed], components: [row1] });
-    }
+        const embed = createEmbed(
+            `🔊 ${user.username} Yönetim Paneli`,
+            `Özel odanız başarıyla oluşturuldu. Aşağıdaki menüyü kullanarak odanızı yönetebilirsiniz.`,
+            0x3498DB
+        );
 
-    if (newState.channel && newState.channel.name.startsWith('🔊')) {
-        if (deleteTimers.has(newState.channel.id)) {
-            clearTimeout(deleteTimers.get(newState.channel.id));
-            deleteTimers.delete(newState.channel.id);
-        }
-    }
+        const settingsMenu = new StringSelectMenuBuilder()
+            .setCustomId('vc_settings')
+            .setPlaceholder('⚙️ Kanal Ayarları')
+            .addOptions(
+                new StringSelectMenuOptionBuilder().setLabel('İsim Değiştir').setValue('action_name').setEmoji('📝'),
+                new StringSelectMenuOptionBuilder().setLabel('Kişi Limiti').setValue('action_limit').setEmoji('🔢'),
+                new StringSelectMenuOptionBuilder().setLabel('Davet Et (ID)').setValue('action_invite_id').setEmoji('📩'),
+                new StringSelectMenuOptionBuilder().setLabel('Odadan At (ID)').setValue('action_kick_id').setEmoji('🚫'),
+                new StringSelectMenuOptionBuilder().setLabel('Odayı Devret (ID)').setValue('action_transfer').setEmoji('👑'),
+                new StringSelectMenuOptionBuilder().setLabel('Oda Yetkilisi Ekle (ID)').setValue('action_add_admin').setEmoji('🛡️'),
+                new StringSelectMenuOptionBuilder().setLabel('Kilitle').setValue('action_lock').setEmoji('🔒'),
+                new StringSelectMenuOptionBuilder().setLabel('Kilidi Aç').setValue('action_unlock').setEmoji('🔓'),
+                new StringSelectMenuOptionBuilder().setLabel('Detaylı Bilgi').setValue('action_info').setEmoji('📊'),
+                new StringSelectMenuOptionBuilder().setLabel('Odayı Sil').setValue('action_delete').setEmoji('🗑️')
+            );
 
-    if (oldState.channel && oldState.channel.name.startsWith('🔊') && oldState.channel.members.size === 0) {
-        const timer = setTimeout(async () => {
-            const channel = oldState.channel;
-            try {
-                let ownerId = null;
-                channel.permissionOverwrites.cache.forEach((perm, id) => {
-                    if (perm.type === 1 && perm.allow.has(PermissionsBitField.Flags.ManageChannels)) ownerId = id;
-                });
-                if (ownerId) {
-                    const user = await client.users.fetch(ownerId).catch(() => null);
-                    if (user) {
-                        const dmEmbed = createEmbed(
-                            'Oda Kapatıldı',
-                            `**Merhaba, ${oldState.guild.name}** sunucusundaki odanızda kimse kalmadığı için kanal otomatik olarak kapatılmıştır.`,
-                            0x95A5A6
-                        );
-                        await user.send({ embeds: [dmEmbed] }).catch(() => {});
-                    }
-                }
-                await channel.delete().catch(() => {});
-                deleteTimers.delete(channel.id);
-            } catch (e) {}
-        }, 5000);
-        deleteTimers.set(oldState.channel.id, timer);
-    }
+        const row1 = new ActionRowBuilder().addComponents(settingsMenu);
+        await newChannel.send({ content: `<@${user.id}>`, embeds: [embed], components: [row1] });
+    }
+
+    if (newState.channel && tempVoiceChannels.has(newState.channel.id)) {
+        if (deleteTimers.has(newState.channel.id)) {
+            clearTimeout(deleteTimers.get(newState.channel.id));
+            deleteTimers.delete(newState.channel.id);
+        }
+    }
+
+    if (oldState.channel && tempVoiceChannels.has(oldState.channel.id) && oldState.channel.members.size === 0) {
+        const timer = setTimeout(async () => {
+            const channel = oldState.channel;
+            try {
+                let ownerId = null;
+                channel.permissionOverwrites.cache.forEach((perm, id) => {
+                    if (perm.type === 1 && perm.allow.has(PermissionsBitField.Flags.ManageChannels)) ownerId = id;
+                });
+                if (ownerId) {
+                    const user = await client.users.fetch(ownerId).catch(() => null);
+                    if (user) {
+                        const dmEmbed = createEmbed(
+                            'Oda Kapatıldı',
+                            `**Merhaba, ${oldState.guild.name}** sunucusundaki odanızda kimse kalmadığı için kanal otomatik olarak kapatılmıştır.`,
+                            0x95A5A6
+                        );
+                        await user.send({ embeds: [dmEmbed] }).catch(() => {});
+                    }
+                }
+                await channel.delete().catch(() => {});
+                deleteTimers.delete(channel.id);
+                tempVoiceChannels.delete(channel.id);
+            } catch (e) {}
+        }, 5000);
+        deleteTimers.set(oldState.channel.id, timer);
+    }
 });
 
 client.on('interactionCreate', async interaction => {
@@ -1748,6 +1753,7 @@ client.on('interactionCreate', async interaction => {
                 interaction.reply({ embeds: [createEmbed('Oda Kilidi Açıldı', 'Oda kilidi açılmıştır.', 0x2ECC71)], flags: MessageFlags.Ephemeral });
             } else if (selection === 'action_delete') {
                 interaction.reply({ embeds: [createEmbed('Silme İşlemi', 'Kanal siliniyor...', 0xE74C3C)], flags: MessageFlags.Ephemeral });
+                tempVoiceChannels.delete(channel.id)
                 await channel.delete();
             } else if (selection === 'action_info') {
                 const memberCount = channel.members.size;
