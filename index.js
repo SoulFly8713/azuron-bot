@@ -39,8 +39,9 @@ const E = {
     engel: '<:engel:1491436311427416075>',
     uye2: '<:uye2:1491436309569343528>',
     yardim: '<:yardim:1491436307371528242>',
-    kanalac: '<:kanalac:1491436296445497525>',
-    kanalkapali: '<:kanalkapa:1491436292297330698>'
+    kanalac: '<:kanalkapa:1491436296445497525>',
+    kanalkapa: '<:discotoolsxyzicon2026040:1491436292297330698>',
+    admin: '<:admin:1491439896882057226>'
 };
 
 const E_ID = {
@@ -73,8 +74,9 @@ const E_ID = {
     engel: '1491436311427416075',
     uye2: '1491436309569343528',
     yardim: '1491436307371528242',
-    kanalac: '1491436296445497525',
-    kanalkapali: '1491436292297330698'
+    kanalkapa: '1491436296445497525',
+    kanalkapali: '1491436292297330698',
+    admin: '1491439896882057226'
 };
 
 const app = express();
@@ -658,7 +660,7 @@ client.on('guildBanRemove', async ban => {
     if (unbanLog && unbanLog.target.id === ban.user.id && unbanLog.createdAt > Date.now() - 5000) {
         executor = unbanLog.executor.tag;
     }
-    await sendLog(ban.guild, `${E.kanalac} Yasaklama Kaldırıldı`, `**Kullanıcı:** ${ban.user.tag}\n**Yetkili:** ${executor}`, 0x2ECC71);
+    await sendLog(ban.guild, `${E.kanalkapa} Yasaklama Kaldırıldı`, `**Kullanıcı:** ${ban.user.tag}\n**Yetkili:** ${executor}`, 0x2ECC71);
 });
 
 client.on('guildMemberRemove', async member => {
@@ -871,7 +873,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
                 new StringSelectMenuOptionBuilder().setLabel('Odayı Devret (ID)').setValue('action_transfer').setEmoji(E_ID.yildiz),
                 new StringSelectMenuOptionBuilder().setLabel('Oda Yetkilisi Ekle (ID)').setValue('action_add_admin').setEmoji(E_ID.onay),
                 new StringSelectMenuOptionBuilder().setLabel('Kilitle').setValue('action_lock').setEmoji(E_ID.kanalkapali),
-                new StringSelectMenuOptionBuilder().setLabel('Kilidi Aç').setValue('action_unlock').setEmoji(E_ID.kanalac),
+                new StringSelectMenuOptionBuilder().setLabel('Kilidi Aç').setValue('action_unlock').setEmoji(E_ID.kanalkapa),
                 new StringSelectMenuOptionBuilder().setLabel('Detaylı Bilgi').setValue('action_info').setEmoji(E_ID.kesif),
                 new StringSelectMenuOptionBuilder().setLabel('Odayı Sil').setValue('action_delete').setEmoji(E_ID.copkutusu)
             );
@@ -1215,7 +1217,7 @@ client.on('interactionCreate', async interaction => {
                 .setPlaceholder('Kategori Seçin...')
                 .addOptions(
                     new StringSelectMenuOptionBuilder().setLabel('Genel Komutlar').setValue('help_genel').setEmoji(E_ID.kesif),
-                    new StringSelectMenuOptionBuilder().setLabel('Yönetici Komutları').setValue('help_admin').setEmoji(E_ID.onay),
+                    new StringSelectMenuOptionBuilder().setLabel('Yönetici Komutları').setValue('help_admin').setEmoji(E_ID.admin),
                     new StringSelectMenuOptionBuilder().setLabel('Takviyeci Komutları').setValue('help_booster').setEmoji(E_ID.yildiz),
                     new StringSelectMenuOptionBuilder().setLabel('Sistemler').setValue('help_systems').setEmoji(E_ID.bakim)
                 );
@@ -1227,7 +1229,7 @@ client.on('interactionCreate', async interaction => {
         if (commandName === 'ses-panel') {
             await interaction.deferReply();
             const category = await guild.channels.create({ name: 'ÖZEL ODALAR', type: ChannelType.GuildCategory });
-            const voiceChannel = await guild.channels.create({ name: `${E.kanalac} Oda Oluştur`, type: ChannelType.GuildVoice, parent: category.id });
+            const voiceChannel = await guild.channels.create({ name: `${E.kanalkapa} Oda Oluştur`, type: ChannelType.GuildVoice, parent: category.id });
             await interaction.editReply({
                 embeds: [createEmbed('Kurulum Başarılı', `Sistem aktif edilmiştir. <#${voiceChannel.id}> kanalı kullanıma hazırdır.`, 0x2ECC71)]
             });
@@ -1453,14 +1455,14 @@ client.on('interactionCreate', async interaction => {
                     interaction.reply({ embeds: [createEmbed('Kanal Kilitlendi', `${E.kanalkapali} Kanal ${sure} dakika boyunca kilitlendi.`, 0xE74C3C)] });
                     setTimeout(async () => {
                         await interaction.channel.permissionOverwrites.edit(interaction.guild.roles.everyone, { SendMessages: null }).catch(()=>{});
-                        interaction.channel.send({ embeds: [createEmbed('Kanal Kilidi Açıldı', `${E.kanalac} Süre dolduğu için kanal kilidi otomatik olarak açıldı.`, 0x2ECC71)] }).catch(()=>{});
+                        interaction.channel.send({ embeds: [createEmbed('Kanal Kilidi Açıldı', `${E.kanalkapa} Süre dolduğu için kanal kilidi otomatik olarak açıldı.`, 0x2ECC71)] }).catch(()=>{});
                     }, sure * 60000);
                 } else {
                     interaction.reply({ embeds: [createEmbed('Kanal Kilitlendi', `${E.kanalkapali} Kanal süresiz olarak kilitlendi.`, 0xE74C3C)] });
                 }
             } else if (sub === 'aç') {
                 await interaction.channel.permissionOverwrites.edit(interaction.guild.roles.everyone, { SendMessages: null });
-                interaction.reply({ embeds: [createEmbed('Kanal Kilidi Açıldı', `${E.kanalac} Kanalın kilidi açıldı.`, 0x2ECC71)] });
+                interaction.reply({ embeds: [createEmbed('Kanal Kilidi Açıldı', `${E.kanalkapa} Kanalın kilidi açıldı.`, 0x2ECC71)] });
             }
         }
     }
@@ -1471,11 +1473,11 @@ client.on('interactionCreate', async interaction => {
             let newEmbed;
             
             if (value === 'help_genel') {
-                newEmbed = createEmbed(`${E.kesif} Genel Komutlar`, '`/yardım`, `/öneri`, `/ping`, `/sunucu-bilgi`, `/kullanıcı-bilgi`, `/medya`', 0x5865F2);
+                newEmbed = createEmbed(`${E.kesif} Genel Komutlar`, '`/yardım` - Botun komut listesini gösterir.\n`/öneri` - Yönetim ekibine bir öneri gönderin.\n`/ping` - Botun gecikme süresini gösterir.\n`/sunucu-bilgi` - Sunucu hakkındaki detaylı bilgileri gösterir.\n`/kullanıcı-bilgi` - Belirtilen kullanıcı hakkında bilgi verir.\n`/medya` - TikTok videosunu oynatır.', 0x5865F2);
             } else if (value === 'help_admin') {
-                newEmbed = createEmbed(`${E.onay} Yönetici Komutları`, '`/çekiliş`, `/yeniden-çek`, `/mod-form`, `/ses-panel`, `/bilet olustur`, `/link-engel`, `/kick`, `/ban`, `/mute`, `/unmute`, `/sil`, `/rol ayarla`, `/özel mesaj-ayarla`, `/özel mesaj-sil`, `/hatırlatma ayarla`, `/hatırlatma sil`, `/kanal-kilit aç`, `/kanal-kilit kapa`', 0x5865F2);
+                newEmbed = createEmbed(`${E.admin} Yönetici Komutları`, '`/çekiliş` - Sunucuda yeni bir çekiliş başlatır.\n`/yeniden-çek` - Sona ermiş bir çekiliş için yeni kazanan belirler.\n`/mod-form` - Moderatör başvuru formunu kanala gönderir.\n`/ses-panel` - Ses yönetim panelini aktif eder.\n`/bilet olustur` - Bilet sistemini sunucuya kurar.\n`/link-engel` - Sunucu içi link paylaşım korumasını yönetir.\n`/kick` - Kullanıcıyı sunucudan uzaklaştırır.\n`/ban` - Kullanıcıyı yasaklar.\n`/mute` - Kullanıcıya süreli kısıtlama uygular.\n`/unmute` - Kullanıcının kısıtlamasını kaldırır.\n`/sil` - Belirtilen miktarda mesajı kanaldan temizler.\n`/rol ayarla` - Sunucuya katılanlara verilecek otomatik rolü ayarlar.\n`/özel mesaj-ayarla` - Özel yanıt ayarlar.\n`/özel mesaj-sil` - Özel mesajı siler.\n`/hatırlatma ayarla` - Hatırlatma mesajı ayarlar.\n`/hatırlatma sil` - Hatırlatmaları siler.\n`/kanal-kilit aç` - Kanalın kilidini açar.\n`/kanal-kilit kapa` - Kanalı kilitler.', 0x5865F2);
             } else if (value === 'help_booster') {
-                newEmbed = createEmbed(`${E.yildiz} Takviyeci Komutları`, '`/özel rol-ayarla`, `/özel rol-sil`', 0x5865F2);
+                newEmbed = createEmbed(`${E.yildiz} Takviyeci Komutları`, '`/özel rol-ayarla` - Özel rol oluşturur.\n`/özel rol-sil` - Özel rolü siler.', 0x5865F2);
             } else if (value === 'help_systems') {
                 newEmbed = createEmbed(`${E.bakim} Sistemler`, `**Ses Sistemi:** Özel oda kurmak için **Oda Oluştur** kanalına girmeniz yeterlidir.\n**Bilet Sistemi:** **bilet-oluştur** kanalındaki menüden destek bileti açabilirsiniz.`, 0x5865F2);
             }
@@ -1541,7 +1543,7 @@ client.on('interactionCreate', async interaction => {
                 });
 
                 const reopenEmbed = new EmbedBuilder()
-                    .setTitle(`${E.kanalac} Bilet Yeniden Açıldı`)
+                    .setTitle(`${E.kanalkapa} Bilet Yeniden Açıldı`)
                     .setDescription(`Bu bilet <@${interaction.user.id}> tarafından yeniden açılmıştır.\n\n<@${ownerId}> Biletiniz yeniden aktif hale getirildi.`)
                     .setColor(0x2ECC71)
                     .setTimestamp()
@@ -1556,7 +1558,7 @@ client.on('interactionCreate', async interaction => {
                 const btnRow = new ActionRowBuilder().addComponents(closeAgainButton);
 
                 await interaction.reply({ embeds: [reopenEmbed], components: [btnRow] });
-                await sendLog(guild, `${E.kanalac} Bilet Yeniden Açıldı`, `**Kanal:** ${channel.name}\n**Açan Yetkili:** ${interaction.user.tag}`, 0x2ECC71);
+                await sendLog(guild, `${E.kanalkapa} Bilet Yeniden Açıldı`, `**Kanal:** ${channel.name}\n**Açan Yetkili:** ${interaction.user.tag}`, 0x2ECC71);
             }
             return;
         }
@@ -1603,7 +1605,7 @@ client.on('interactionCreate', async interaction => {
                 const memberCount = channel.members.size;
                 const limit = channel.userLimit === 0 ? 'Sınırsız' : channel.userLimit;
                 const bitrate = channel.bitrate / 1000;
-                const isLocked = channel.permissionOverwrites.resolve(interaction.guild.id)?.deny.has(PermissionsBitField.Flags.Connect) ? `${E.kanalkapali} Kilitli` : `${E.kanalac} Açık`;
+                const isLocked = channel.permissionOverwrites.resolve(interaction.guild.id)?.deny.has(PermissionsBitField.Flags.Connect) ? `${E.kanalkapali} Kilitli` : `${E.kanalkapa} Açık`;
                 const region = channel.rtcRegion || 'Otomatik';
                 const membersList = channel.members.map(m => m.user.tag).join(', ') || 'Odada kimse yok.';
                 const shortMembersList = membersList.length > 1000 ? membersList.substring(0, 997) + '...' : membersList;
@@ -1925,7 +1927,7 @@ client.on('interactionCreate', async interaction => {
                         .setLabel('Bileti Yeniden Aç')
                         .setDescription('Bileti tekrar aktif hale getirir ve sahibine erişim verir.')
                         .setValue('ticket_reopen')
-                        .setEmoji(E_ID.kanalac),
+                        .setEmoji(E_ID.kanalkapa),
                     new StringSelectMenuOptionBuilder()
                         .setLabel('Bileti Sil')
                         .setDescription('Bu kanalı kalıcı olarak siler.')
@@ -2406,7 +2408,7 @@ client.on('messageDelete', async message => {
     }
 
     if (!message.content && files.length === 0 && !imageUrl) {
-        description += `\n*İçerik bulunamadı.*`;
+        description += `\n*İçerik bulunamadı veya sadece sistem mesajı/embed.*`;
     }
 
     const deleteEmbed = createEmbed(`${E.copkutusu} Mesaj Silindi`, description, 0xE74C3C);
@@ -2434,7 +2436,7 @@ client.on('messageUpdate', async (oldMessage, newMessage) => {
 });
 
 async function getGeneratorChannelId(guild) {
-    const c = guild.channels.cache.find(c => c.name === `${E.kanalac} Oda Oluştur` && c.type === ChannelType.GuildVoice);
+    const c = guild.channels.cache.find(c => c.name === `${E.kanalkapa} Oda Oluştur` && c.type === ChannelType.GuildVoice);
     return c ? c.id : null;
 }
 
