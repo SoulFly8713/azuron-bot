@@ -2436,7 +2436,7 @@ client.on('messageUpdate', async (oldMessage, newMessage) => {
 });
 
 async function getGeneratorChannelId(guild) {
-    const c = guild.channels.cache.find(c => c.name === `${E.kanalac} Oda Oluştur` && c.type === ChannelType.GuildVoice);
+    const c = guild.channels.cache.find(c => c.name === '➕ Oda Oluştur' && c.type === ChannelType.GuildVoice);
     return c ? c.id : null;
 }
 
