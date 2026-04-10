@@ -3,7 +3,7 @@ const {
     ActionRowBuilder, StringSelectMenuBuilder, StringSelectMenuOptionBuilder,
     ButtonBuilder, ButtonStyle, ChannelType, ModalBuilder, TextInputBuilder,
     TextInputStyle, REST, Routes, SlashCommandBuilder, ActivityType, MessageFlags,
-    AuditLogEvent
+    AuditLogEvent, RoleSelectMenuBuilder
 } = require('discord.js');
 const { joinVoiceChannel, getVoiceConnection } = require('@discordjs/voice');
 const express = require("express");
@@ -33,7 +33,7 @@ const E = {
     ev: '<:ev:1491436321418379414>',
     oyun: '<:oyun:1491436319539200100>',
     zamanasimi: '<:zamanasimi:1491436318230839316>',
-    hediye: '<:discotoolsxyzicon2026040:1491436316674752522>',
+    surpiz: '<:surpiz:1491436316674752522>',
     onay: '<:onay:1491436314774470656>',
     red: '<:red:1491436313055068220>',
     engel: '<:engel:1491436311427416075>',
@@ -68,7 +68,7 @@ const E_ID = {
     ev: '1491436321418379414',
     oyun: '1491436319539200100',
     zamanasimi: '1491436318230839316',
-    hediye: '1491436316674752522',
+    surpiz: '1491436316674752522',
     onay: '1491436314774470656',
     red: '1491436313055068220',
     engel: '1491436311427416075',
@@ -107,7 +107,9 @@ const GuildSettings = sequelize.define('GuildSettings', {
     linkProtection: { type: DataTypes.BOOLEAN, defaultValue: false },
     autoRole: { type: DataTypes.STRING, allowNull: true },
     logChannel: { type: DataTypes.STRING, allowNull: true },
-    welcomeChannel: { type: DataTypes.STRING, allowNull: true }
+    welcomeChannel: { type: DataTypes.STRING, allowNull: true },
+    botVoiceChannel: { type: DataTypes.STRING, allowNull: true },
+    ticketStaffRole: { type: DataTypes.STRING, allowNull: true }
 });
 
 const CustomRole = sequelize.define('CustomRole', {
@@ -166,8 +168,6 @@ client.on('error', error => {
     console.error("Discord Bağlantı Hatası:", error);
 });
 
-const BOT_VOICE_CHANNEL_ID = '1473737542166774042';
-const TICKET_STAFF_ROLE_ID = '1464184391881457704';
 const TARGET_ROLE_ID = '1473029465587323076';
 
 const linkProtection = new Set();
@@ -177,6 +177,8 @@ const pendingApplications = new Set();
 const autoRoles = new Map();
 const logChannels = new Map();
 const welcomeChannels = new Map();
+const botVoiceChannels = new Map();
+const ticketStaffRoles = new Map();
 const customRoleSetup = new Map();
 const userCustomRoles = new Map();
 const activeGiveaways = new Map();
@@ -367,6 +369,8 @@ client.on('clientReady', async () => {
                 if (s.autoRole) autoRoles.set(s.guildId, s.autoRole);
                 if (s.logChannel) logChannels.set(s.guildId, s.logChannel);
                 if (s.welcomeChannel) welcomeChannels.set(s.guildId, s.welcomeChannel);
+                if (s.botVoiceChannel) botVoiceChannels.set(s.guildId, s.botVoiceChannel);
+                if (s.ticketStaffRole) ticketStaffRoles.set(s.guildId, s.ticketStaffRole);
             });
 
             const roles = await CustomRole.findAll();
@@ -405,29 +409,39 @@ client.on('clientReady', async () => {
         } catch (error) {}
     });
 
-    const voiceChannel = client.channels.cache.get(BOT_VOICE_CHANNEL_ID);
-    if (voiceChannel) {
-        joinVoiceChannel({
-            channelId: voiceChannel.id,
-            guildId: voiceChannel.guild.id,
-            adapterCreator: voiceChannel.guild.voiceAdapterCreator,
-            selfDeaf: true
-        });
-    }
-
-    setInterval(() => {
-        const checkVoiceChannel = client.channels.cache.get(BOT_VOICE_CHANNEL_ID);
-        if (checkVoiceChannel) {
-            const connection = getVoiceConnection(checkVoiceChannel.guild.id);
-            if (!connection) {
+    botVoiceChannels.forEach((channelId, guildId) => {
+        const guild = client.guilds.cache.get(guildId);
+        if (guild) {
+            const voiceChannel = guild.channels.cache.get(channelId);
+            if (voiceChannel) {
                 joinVoiceChannel({
-                    channelId: checkVoiceChannel.id,
-                    guildId: checkVoiceChannel.guild.id,
-                    adapterCreator: checkVoiceChannel.guild.voiceAdapterCreator,
+                    channelId: voiceChannel.id,
+                    guildId: voiceChannel.guild.id,
+                    adapterCreator: voiceChannel.guild.voiceAdapterCreator,
                     selfDeaf: true
                 });
             }
         }
+    });
+
+    setInterval(() => {
+        botVoiceChannels.forEach((channelId, guildId) => {
+            const guild = client.guilds.cache.get(guildId);
+            if (guild) {
+                const voiceChannel = guild.channels.cache.get(channelId);
+                if (voiceChannel) {
+                    const connection = getVoiceConnection(guildId);
+                    if (!connection) {
+                        joinVoiceChannel({
+                            channelId: voiceChannel.id,
+                            guildId: guildId,
+                            adapterCreator: guild.voiceAdapterCreator,
+                            selfDeaf: true
+                        });
+                    }
+                }
+            }
+        });
     }, 60000);
 
     setInterval(async () => {
@@ -459,6 +473,19 @@ client.on('clientReady', async () => {
                 .setName('kanal-ayarla')
                 .setDescription('Sunucu loglarının gönderileceği kanalı belirler.')
                 .addChannelOption(o => o.setName('kanal').setDescription('Kanal seçin').setRequired(true))
+            )
+            .addSubcommand(s => s
+                .setName('kaldır')
+                .setDescription('Sunucu log sistemini kapatır.')
+            ),
+        new SlashCommandBuilder()
+            .setName('ses')
+            .setDescription('Ses kanalı ayarları')
+            .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
+            .addSubcommand(s => s
+                .setName('bağla')
+                .setDescription('Botu belirtilen ses kanalına bağlar.')
+                .addChannelOption(o => o.setName('kanal').setDescription('Kanal seçin').addChannelTypes(ChannelType.GuildVoice).setRequired(true))
             ),
         new SlashCommandBuilder()
             .setName('karşılama')
@@ -547,7 +574,7 @@ client.on('clientReady', async () => {
         new SlashCommandBuilder()
             .setName('bilet')
             .setDescription('Bilet sistemini yönetir.')
-            .addSubcommand(s => s.setName('olustur').setDescription('Bilet sistemini sunucuya kurar.'))
+            .addSubcommand(s => s.setName('oluştur').setDescription('Bilet sistemini sunucuya kurar.'))
             .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator),
         new SlashCommandBuilder()
             .setName('kick')
@@ -951,13 +978,33 @@ client.on('interactionCreate', async interaction => {
     if (interaction.isChatInputCommand()) {
         const { commandName, options, member, guild } = interaction;
 
+        if (commandName === 'ses') {
+            const sub = options.getSubcommand();
+            if (sub === 'bağla') {
+                const targetChannel = options.getChannel('kanal');
+                botVoiceChannels.set(guild.id, targetChannel.id);
+                await GuildSettings.upsert({ guildId: guild.id, botVoiceChannel: targetChannel.id });
+                joinVoiceChannel({
+                    channelId: targetChannel.id,
+                    guildId: guild.id,
+                    adapterCreator: guild.voiceAdapterCreator,
+                    selfDeaf: true
+                });
+                return interaction.reply({ embeds: [createEmbed(`${E.onay} Başarılı`, `Bot başarıyla ${targetChannel} kanalına bağlandı.`, 0x2ECC71)], flags: MessageFlags.Ephemeral });
+            }
+        }
+
         if (commandName === 'log') {
             const sub = options.getSubcommand();
             if (sub === 'kanal-ayarla') {
                 const targetChannel = options.getChannel('kanal');
                 logChannels.set(guild.id, targetChannel.id);
                 await GuildSettings.upsert({ guildId: guild.id, logChannel: targetChannel.id });
-                return interaction.reply({ embeds: [createEmbed('Başarılı', `Sunucu log kanalı başarıyla ${targetChannel} olarak ayarlandı.`, 0x2ECC71)], flags: MessageFlags.Ephemeral });
+                return interaction.reply({ embeds: [createEmbed(`${E.onay} Başarılı`, `Sunucu log kanalı başarıyla ${targetChannel} olarak ayarlandı.`, 0x2ECC71)], flags: MessageFlags.Ephemeral });
+            } else if (sub === 'kaldır') {
+                logChannels.delete(guild.id);
+                await GuildSettings.update({ logChannel: null }, { where: { guildId: guild.id } });
+                return interaction.reply({ embeds: [createEmbed(`${E.onay} Başarılı`, 'Log sistemi kapatıldı ve kanal kaldırıldı.', 0x2ECC71)], flags: MessageFlags.Ephemeral });
             }
         }
 
@@ -967,11 +1014,11 @@ client.on('interactionCreate', async interaction => {
                 const targetChannel = options.getChannel('kanal');
                 welcomeChannels.set(guild.id, targetChannel.id);
                 await GuildSettings.upsert({ guildId: guild.id, welcomeChannel: targetChannel.id });
-                return interaction.reply({ embeds: [createEmbed('Başarılı', `Karşılama kanalı başarıyla ${targetChannel} olarak ayarlandı.`, 0x2ECC71)], flags: MessageFlags.Ephemeral });
+                return interaction.reply({ embeds: [createEmbed(`${E.onay} Başarılı`, `Karşılama kanalı başarıyla ${targetChannel} olarak ayarlandı.`, 0x2ECC71)], flags: MessageFlags.Ephemeral });
             } else if (sub === 'kaldır') {
                 welcomeChannels.delete(guild.id);
                 await GuildSettings.update({ welcomeChannel: null }, { where: { guildId: guild.id } });
-                return interaction.reply({ embeds: [createEmbed('Başarılı', 'Karşılama mesajı sistemi kapatıldı ve kanal kaldırıldı.', 0x2ECC71)], flags: MessageFlags.Ephemeral });
+                return interaction.reply({ embeds: [createEmbed(`${E.onay} Başarılı`, 'Karşılama mesajı sistemi kapatıldı ve kanal kaldırıldı.', 0x2ECC71)], flags: MessageFlags.Ephemeral });
             }
         }
 
@@ -1330,79 +1377,19 @@ client.on('interactionCreate', async interaction => {
 
         if (commandName === 'bilet') {
             const sub = options.getSubcommand();
-            if (sub === 'olustur') {
-                await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-
-                const existingCategory = guild.channels.cache.find(c =>
-                    c.name === `${E.bilet} Bilet Sistemi` && c.type === ChannelType.GuildCategory
-                );
+            if (sub === 'oluştur') {
+                const existingCategory = guild.channels.cache.find(c => c.name === `${E.bilet} Bilet Sistemi` && c.type === ChannelType.GuildCategory);
                 if (existingCategory) {
-                    return interaction.editReply({
-                        embeds: [createErrorEmbed(`Bilet sistemi zaten kurulu. Lütfen mevcut **${E.bilet} Bilet Sistemi** kategorisini kontrol edin.`)]
-                    });
+                    return interaction.reply({ embeds: [createErrorEmbed(`Bilet sistemi zaten kurulu.`)], flags: MessageFlags.Ephemeral });
                 }
-
-                const ticketCategory = await guild.channels.create({
-                    name: `${E.bilet} Bilet Sistemi`,
-                    type: ChannelType.GuildCategory
-                });
-
-                const ticketSetupChannel = await guild.channels.create({
-                    name: 'bilet-oluştur',
-                    type: ChannelType.GuildText,
-                    parent: ticketCategory.id,
-                    permissionOverwrites: [
-                        { id: guild.id, deny: [PermissionsBitField.Flags.SendMessages], allow: [PermissionsBitField.Flags.ViewChannel] }
-                    ]
-                });
-
-                const supportEmbed = new EmbedBuilder()
-                    .setTitle(`${E.bilet} Destek Sistemi`)
-                    .setDescription(
-                        '**Merhaba, Azuron Türkiye Destek Merkezine Hoş Geldiniz!**\n\n' +
-                        'Herhangi bir konuda yardıma ihtiyaç duyuyorsanız aşağıdaki menüyü kullanarak bilet oluşturabilirsiniz.\n\n' +
-                        `> ${E.kayit} Biletiniz açıldığında yalnızca siz ve yetkili ekibimiz görebilir.\n` +
-                        `> ${E.zamanasimi} Ekibimiz en kısa sürede size geri dönecektir.\n` +
-                        `> ${E.engel} Lütfen bilet açmadan önce konunuzu net bir şekilde belirleyin.\n\n` +
-                        '**Destek almak için aşağıdaki menüden seçim yapın.**'
-                    )
-                    .setColor(0x5865F2)
-                    .setTimestamp()
-                    .setFooter({ text: 'Azuron Türkiye Destek Sistemi', iconURL: client.user.displayAvatarURL() })
-                    .setThumbnail(guild.iconURL({ dynamic: true }) || client.user.displayAvatarURL());
-
-                const ticketOpenMenu = new StringSelectMenuBuilder()
-                    .setCustomId('ticket_open_menu')
-                    .setPlaceholder('Bilet türünü seçin...')
-                    .addOptions(
-                        new StringSelectMenuOptionBuilder()
-                            .setLabel('Destek Bileti Aç')
-                            .setDescription('Genel konularda yetkili ekibinden destek alın.')
-                            .setValue('open_support_ticket')
-                            .setEmoji(E_ID.bilet),
-                        new StringSelectMenuOptionBuilder()
-                            .setLabel('Şikayet Bileti Aç')
-                            .setDescription('Bir kullanıcı hakkında şikayette bulunun.')
-                            .setValue('open_report_ticket')
-                            .setEmoji(E_ID.duyuru2),
-                        new StringSelectMenuOptionBuilder()
-                            .setLabel('Öneri Bileti Aç')
-                            .setDescription('Sunucuya özel öneri veya isteklerinizi iletin.')
-                            .setValue('open_suggestion_ticket')
-                            .setEmoji(E_ID.yildiz)
-                    );
-
-                const ticketMenuRow = new ActionRowBuilder().addComponents(ticketOpenMenu);
-
-                await ticketSetupChannel.send({ embeds: [supportEmbed], components: [ticketMenuRow] });
-
-                await interaction.editReply({
-                    embeds: [createEmbed(
-                        `${E.onay} Bilet Sistemi Kuruldu`,
-                        `Bilet sistemi başarıyla aktif edildi.\n\n${E.kayit} **Kategori:** ${ticketCategory.name}\n${E.forum} **Kanal:** <#${ticketSetupChannel.id}>`,
-                        0x2ECC71
-                    )]
-                });
+                
+                const roleMenu = new RoleSelectMenuBuilder()
+                    .setCustomId('ticket_staff_role_select')
+                    .setPlaceholder('Biletlerle ilgilenecek rolü seçiniz.')
+                    .setMaxValues(1);
+                    
+                const row = new ActionRowBuilder().addComponents(roleMenu);
+                return interaction.reply({ content: 'Kurulum Aşaması: Biletlerle ilgilenecek yetkili rolünü seçin.', components: [row], flags: MessageFlags.Ephemeral });
             }
         }
 
@@ -1521,6 +1508,73 @@ client.on('interactionCreate', async interaction => {
         }
     }
 
+    if (interaction.isRoleSelectMenu() && interaction.customId === 'ticket_staff_role_select') {
+        await interaction.deferUpdate();
+        const selectedRoleId = interaction.values[0];
+        ticketStaffRoles.set(interaction.guild.id, selectedRoleId);
+        await GuildSettings.upsert({ guildId: interaction.guild.id, ticketStaffRole: selectedRoleId });
+        
+        const ticketCategory = await interaction.guild.channels.create({
+            name: `${E.bilet} Bilet Sistemi`,
+            type: ChannelType.GuildCategory
+        });
+
+        const ticketSetupChannel = await interaction.guild.channels.create({
+            name: 'bilet-oluştur',
+            type: ChannelType.GuildText,
+            parent: ticketCategory.id,
+            permissionOverwrites: [
+                { id: interaction.guild.id, deny: [PermissionsBitField.Flags.SendMessages], allow: [PermissionsBitField.Flags.ViewChannel] }
+            ]
+        });
+
+        const supportEmbed = new EmbedBuilder()
+            .setTitle(`${E.bilet} Destek Sistemi`)
+            .setDescription(
+                '**Merhaba, Azuron Türkiye Destek Merkezine Hoş Geldiniz!**\n\n' +
+                'Herhangi bir konuda yardıma ihtiyaç duyuyorsanız aşağıdaki menüyü kullanarak bilet oluşturabilirsiniz.\n\n' +
+                `> ${E.kayit} Biletiniz açıldığında yalnızca siz ve yetkili ekibimiz görebilir.\n` +
+                `> ${E.zamanasimi} Ekibimiz en kısa sürede size geri dönecektir.\n` +
+                `> ${E.engel} Lütfen bilet açmadan önce konunuzu net bir şekilde belirleyin.\n\n` +
+                '**Destek almak için aşağıdaki menüden seçim yapın.**'
+            )
+            .setColor(0x5865F2)
+            .setTimestamp()
+            .setFooter({ text: 'Azuron Türkiye Destek Sistemi', iconURL: client.user.displayAvatarURL() })
+            .setThumbnail(interaction.guild.iconURL({ dynamic: true }) || client.user.displayAvatarURL());
+
+        const ticketOpenMenu = new StringSelectMenuBuilder()
+            .setCustomId('ticket_open_menu')
+            .setPlaceholder('Bilet türünü seçin...')
+            .addOptions(
+                new StringSelectMenuOptionBuilder()
+                    .setLabel('Destek Bileti Aç')
+                    .setDescription('Genel konularda yetkili ekibinden destek alın.')
+                    .setValue('open_support_ticket')
+                    .setEmoji(E_ID.bilet),
+                new StringSelectMenuOptionBuilder()
+                    .setLabel('Şikayet Bileti Aç')
+                    .setDescription('Bir kullanıcı hakkında şikayette bulunun.')
+                    .setValue('open_report_ticket')
+                    .setEmoji(E_ID.duyuru2),
+                new StringSelectMenuOptionBuilder()
+                    .setLabel('Öneri Bileti Aç')
+                    .setDescription('Sunucuya özel öneri veya isteklerinizi iletin.')
+                    .setValue('open_suggestion_ticket')
+                    .setEmoji(E_ID.yildiz)
+            );
+
+        const ticketMenuRow = new ActionRowBuilder().addComponents(ticketOpenMenu);
+
+        await ticketSetupChannel.send({ embeds: [supportEmbed], components: [ticketMenuRow] });
+
+        await interaction.editReply({
+            content: null,
+            embeds: [createEmbed(`${E.onay} Bilet Sistemi Kuruldu`, `Bilet sistemi başarıyla aktif edildi.\nYetkili Rolü: <@&${selectedRoleId}>\n\n${E.kayit} **Kategori:** ${ticketCategory.name}\n${E.forum} **Kanal:** <#${ticketSetupChannel.id}>`, 0x2ECC71)],
+            components: []
+        });
+    }
+
     if (interaction.isStringSelectMenu()) {
         if (interaction.customId === 'help_menu') {
             const value = interaction.values[0];
@@ -1529,7 +1583,7 @@ client.on('interactionCreate', async interaction => {
             if (value === 'help_genel') {
                 newEmbed = createEmbed(`${E.kesif} Genel Komutlar`, '`/yardım` - Botun komut listesini gösterir.\n`/öneri` - Yönetim ekibine bir öneri gönderin.\n`/ping` - Botun gecikme süresini gösterir.\n`/sunucu-bilgi` - Sunucu hakkındaki detaylı bilgileri gösterir.\n`/kullanıcı-bilgi` - Belirtilen kullanıcı hakkında bilgi verir.\n`/medya` - TikTok videosunu oynatır.', 0x5865F2);
             } else if (value === 'help_admin') {
-                newEmbed = createEmbed(`${E.admin} Yönetici Komutları`, '`/log kanal-ayarla` - Log kanalını seçer.\n`/karşılama kanal-ayarla` - Karşılama kanalını ayarlar.\n`/çekiliş` - Sunucuda yeni bir çekiliş başlatır.\n`/yeniden-çek` - Sona ermiş bir çekiliş için yeni kazanan belirler.\n`/mod-form` - Moderatör başvuru formunu kanala gönderir.\n`/ses-panel` - Ses yönetim panelini aktif eder.\n`/bilet olustur` - Bilet sistemini sunucuya kurar.\n`/link-engel` - Sunucu içi link paylaşım korumasını yönetir.\n`/kick` - Kullanıcıyı sunucudan uzaklaştırır.\n`/ban` - Kullanıcıyı yasaklar.\n`/mute` - Kullanıcıya süreli kısıtlama uygular.\n`/unmute` - Kullanıcının kısıtlamasını kaldırır.\n`/sil` - Belirtilen miktarda mesajı kanaldan temizler.\n`/rol ayarla` - Sunucuya katılanlara verilecek otomatik rolü ayarlar.\n`/özel mesaj-ayarla` - Özel yanıt ayarlar.\n`/özel mesaj-sil` - Özel mesajı siler.\n`/hatırlatma ayarla` - Hatırlatma mesajı ayarlar.\n`/hatırlatma sil` - Hatırlatmaları siler.\n`/kanal-kilit aç` - Kanalın kilidini açar.\n`/kanal-kilit kapa` - Kanalı kilitler.', 0x5865F2);
+                newEmbed = createEmbed(`${E.admin} Yönetici Komutları`, '`/log kanal-ayarla` - Log kanalını seçer.\n`/log kaldır` - Log sistemini kapatır.\n`/karşılama kanal-ayarla` - Karşılama kanalını ayarlar.\n`/karşılama kaldır` - Karşılama sistemini kapatır.\n`/ses bağla` - Botu istenen sese sabitler.\n`/çekiliş` - Sunucuda yeni bir çekiliş başlatır.\n`/yeniden-çek` - Sona ermiş bir çekiliş için yeni kazanan belirler.\n`/mod-form` - Moderatör başvuru formunu kanala gönderir.\n`/ses-panel` - Ses yönetim panelini aktif eder.\n`/bilet oluştur` - Bilet sistemini sunucuya kurar.\n`/link-engel` - Sunucu içi link paylaşım korumasını yönetir.\n`/kick` - Kullanıcıyı sunucudan uzaklaştırır.\n`/ban` - Kullanıcıyı yasaklar.\n`/mute` - Kullanıcıya süreli kısıtlama uygular.\n`/unmute` - Kullanıcının kısıtlamasını kaldırır.\n`/sil` - Belirtilen miktarda mesajı kanaldan temizler.\n`/rol ayarla` - Sunucuya katılanlara verilecek otomatik rolü ayarlar.\n`/özel mesaj-ayarla` - Özel yanıt ayarlar.\n`/özel mesaj-sil` - Özel mesajı siler.\n`/hatırlatma ayarla` - Hatırlatma mesajı ayarlar.\n`/hatırlatma sil` - Hatırlatmaları siler.\n`/kanal-kilit aç` - Kanalın kilidini açar.\n`/kanal-kilit kapa` - Kanalı kilitler.', 0x5865F2);
             } else if (value === 'help_booster') {
                 newEmbed = createEmbed(`${E.yildiz} Takviyeci Komutları`, '`/özel rol-ayarla` - Özel rol oluşturur.\n`/özel rol-sil` - Özel rolü siler.', 0x5865F2);
             } else if (value === 'help_systems') {
@@ -2231,7 +2285,7 @@ client.on('interactionCreate', async interaction => {
 
             if (!ticketCategory) {
                 return interaction.editReply({
-                    embeds: [createErrorEmbed('Bilet sistemi kategorisi bulunamadı. Lütfen bir yöneticiden `/bilet olustur` komutunu çalıştırmasını isteyin.')]
+                    embeds: [createErrorEmbed('Bilet sistemi kategorisi bulunamadı. Lütfen bir yöneticiden `/bilet oluştur` komutunu çalıştırmasını isteyin.')]
                 });
             }
 
@@ -2246,10 +2300,7 @@ client.on('interactionCreate', async interaction => {
             }
 
             const safeUsername = user.username.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || 'kullanici';
-            const staffRoles = guild.roles.cache.filter(r =>
-                r.permissions.has(PermissionsBitField.Flags.ManageMessages) && r.id !== guild.id
-            );
-
+            
             const permissionOverwrites = [
                 {
                     id: guild.id,
@@ -2272,6 +2323,22 @@ client.on('interactionCreate', async interaction => {
                     ]
                 }
             ];
+
+            const staffRoleId = ticketStaffRoles.get(guild.id);
+            if (staffRoleId) {
+                permissionOverwrites.push({
+                    id: staffRoleId,
+                    allow: [
+                        PermissionsBitField.Flags.ViewChannel,
+                        PermissionsBitField.Flags.SendMessages,
+                        PermissionsBitField.Flags.ReadMessageHistory
+                    ]
+                });
+            }
+
+            const staffRoles = guild.roles.cache.filter(r =>
+                r.permissions.has(PermissionsBitField.Flags.ManageMessages) && r.id !== guild.id && r.id !== staffRoleId
+            );
 
             staffRoles.forEach(role => {
                 permissionOverwrites.push({
@@ -2315,8 +2382,13 @@ client.on('interactionCreate', async interaction => {
 
             const closeRow = new ActionRowBuilder().addComponents(closeButton);
 
+            let pingContent = `<@${user.id}>`;
+            if (staffRoleId) {
+                pingContent += ` <@&${staffRoleId}>`;
+            }
+
             await ticketChannel.send({
-                content: `<@${user.id}> <@&${TICKET_STAFF_ROLE_ID}>`,
+                content: pingContent,
                 embeds: [ticketEmbed],
                 components: [closeRow]
             });
@@ -2486,7 +2558,7 @@ client.on('messageDelete', async message => {
     }
 
     const embeds = [];
-    const baseEmbedUrl = "https://azuron.net";
+    const baseEmbedUrl = "https://discord.com";
 
     const mainEmbed = createEmbed(`${E.copkutusu} Mesaj Silindi`, description, 0xE74C3C).setURL(baseEmbedUrl);
 
