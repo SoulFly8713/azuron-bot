@@ -1515,7 +1515,7 @@ client.on('interactionCreate', async interaction => {
         await GuildSettings.upsert({ guildId: interaction.guild.id, ticketStaffRole: selectedRoleId });
         
         const ticketCategory = await interaction.guild.channels.create({
-            name: `${E.bilet} Bilet Sistemi`,
+            name: `🎫 Bilet Sistemi`,
             type: ChannelType.GuildCategory
         });
 
@@ -2280,7 +2280,7 @@ client.on('interactionCreate', async interaction => {
             const ticketType = typeKeyMap[interaction.customId];
 
             const ticketCategory = guild.channels.cache.find(c =>
-                c.name === `${E.bilet} Bilet Sistemi` && c.type === ChannelType.GuildCategory
+               c.name === `🎫 Bilet Sistemi` && c.type === ChannelType.GuildCategory
             );
 
             if (!ticketCategory) {
