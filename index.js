@@ -354,7 +354,7 @@ async function endGiveaway(messageId) {
 
 client.on('clientReady', async () => {
     client.user.setActivity({
-        name: 'Sunucu Yönetimi',
+        name: 'discord.gg/azuron',
         type: ActivityType.Streaming,
         url: 'https://www.twitch.tv/discord'
     });
