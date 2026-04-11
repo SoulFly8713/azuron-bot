@@ -1071,7 +1071,7 @@ client.on('interactionCreate', async interaction => {
         }
 
         if (commandName === 'ping') {
-            return interaction.reply({ content: `${E.oyun} ...pong! ${Math.round(client.ws.ping)} ms`, flags: MessageFlags.Ephemeral });
+            return interaction.reply({ content: 🏓 ...pong! ${Math.round(client.ws.ping)} ms`, flags: MessageFlags.Ephemeral });
         }
 
         if (commandName === 'medya') {
