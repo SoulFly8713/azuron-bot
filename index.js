@@ -863,7 +863,7 @@ const otoYanitlar = {
         'merhaba': 'Merhaba! Nasılsın?',
         'gunaydin': 'Günaydın!', 
         'iyiyim sen nasilsin': 'Ben de harikayım, teşekkür ederim! Sana nasıl yardımcı olabilirim?', 
-        'kotuyum': 'Bunu duyduğuma üzüldüm.'
+        'kotuyum': 'Bunu duyduğuma üzüldüm.',
         'iyi geceler': 'İyi geceler!',
     };
     
