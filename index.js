@@ -847,8 +847,6 @@ client.on('messageCreate', async message => {
             return;
         }
     }
-    
-    const lowerContent = message.content.toLowerCase();
 
     const lowerContent = message.content.toLowerCase()
         .replace(/ı/g, 'i')
