@@ -850,16 +850,26 @@ client.on('messageCreate', async message => {
     
     const lowerContent = message.content.toLowerCase();
 
-    const otoYanitlar = {
+    const lowerContent = message.content.toLowerCase()
+        .replace(/ı/g, 'i')
+        .replace(/ş/g, 's')
+        .replace(/ğ/g, 'g')
+        .replace(/ü/g, 'u')
+        .replace(/ö/g, 'o')
+        .replace(/ç/g, 'c');
+    
+const otoYanitlar = {
         'sa': 'Aleykümselam, hoş geldin!',
-        'selamünaleyküm': 'Aleykümselam, hoş geldin!',
+        'selamunaleykum': 'Aleykümselam, hoş geldin!', 
         'selam': 'Selam, hoş geldin!',
         'merhaba': 'Merhaba! Nasılsın?',
-        'günaydın': 'Günaydın!',
+        'gunaydin': 'Günaydın!', 
+        'iyiyim sen nasilsin': 'Ben de harikayım, teşekkür ederim! Sana nasıl yardımcı olabilirim?', 
+        'kotuyum': 'Bunu duyduğuma üzüldüm.'
         'iyi geceler': 'İyi geceler!',
     };
-
-    if (otoYanitlar[lowerContent]) {
+    
+      if (otoYanitlar[lowerContent]) {
         return message.reply(otoYanitlar[lowerContent]);
     }
     
