@@ -1440,7 +1440,7 @@ client.on('interactionCreate', async interaction => {
             if (target.id === member.id) return interaction.reply({ embeds: [createErrorEmbed(guild, 'Kendinize susturma işlemi uygulayamazsınız.')], flags: MessageFlags.Ephemeral });
             if (targetMember.moderatable) {
                 await targetMember.timeout(duration * 60000, reason);
-                interaction.reply({ embeds: [createEmbed(guild, 'Süreli Susturma (Timeout)', `**${target.tag}** kullanıcısına **${duration} dakika** boyunca susturulma uygulanmıştır.`, 0xF1C40F)] });
+                interaction.reply({ embeds: [createEmbed(guild, 'Susturma', `**${target.tag}** kullanıcısına **${duration} dakika** boyunca susturulma uygulanmıştır.`, 0xF1C40F)] });
                 await sendLog(guild, `${E.susturma} Kullanıcı Susturuldu`, `**Yetkili:** ${member.user.tag}\n**Susturulan:** ${target.tag}\n**Süre:** ${duration} Dakika\n**Sebep:** ${reason}`, 0xF1C40F);
             } else {
                 interaction.reply({ embeds: [createErrorEmbed(guild, '**Hata:** Bu kullanıcı Yönetici yetkisine sahip veya rolü benden yüksek.')], flags: MessageFlags.Ephemeral });
