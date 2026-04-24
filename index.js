@@ -106,6 +106,7 @@ const GuildSettings = sequelize.define('GuildSettings', {
     guildId: { type: DataTypes.STRING, primaryKey: true },
     linkProtection: { type: DataTypes.BOOLEAN, defaultValue: false },
     autoRole: { type: DataTypes.STRING, allowNull: true },
+    punishmentLogChannel: { type: DataTypes.STRING, allowNull: true },
     logChannel: { type: DataTypes.STRING, allowNull: true },
     welcomeChannel: { type: DataTypes.STRING, allowNull: true },
     botVoiceChannel: { type: DataTypes.STRING, allowNull: true },
@@ -174,6 +175,7 @@ const linkProtection = new Set();
 const deleteTimers = new Map();
 const formCache = new Map();
 const pendingApplications = new Set();
+const punishmentLogChannels = new Map();
 const autoRoles = new Map();
 const logChannels = new Map();
 const welcomeChannels = new Map();
@@ -193,11 +195,9 @@ function createEmbed(guild, title, description, color = 0x5865F2) {
         .setColor(color)
         .setTimestamp()
         .setFooter({ text: guild ? guild.name : 'Bot Sistemi', iconURL: client.user.displayAvatarURL() });
-        
     if (description) {
         embed.setDescription(description);
     }
-    
     return embed;
 }
 
@@ -219,6 +219,17 @@ async function sendLog(guild, title, description, color = 0xE67E22) {
     }
 }
 
+async function sendPunishmentLog(guild, title, description, color = 0xE74C3C) {
+    const punishChannelId = punishmentLogChannels.get(guild.id);
+    const logChannelId = logChannels.get(guild.id);
+    const channelId = punishChannelId || logChannelId;
+    if (!channelId) return;
+    const channel = guild.channels.cache.get(channelId);
+    if (channel) {
+        await channel.send({ embeds: [createEmbed(guild, title, description, color)] }).catch(() => {});
+    }
+}
+
 async function finalizeCustomRoleSetup(guild, member, setupData, iconUrl, replyMethod) {
     try {
         const targetRole = guild.roles.cache.get(TARGET_ROLE_ID);
@@ -234,14 +245,14 @@ async function finalizeCustomRoleSetup(guild, member, setupData, iconUrl, replyM
         }
 
         const newRole = await guild.roles.create(options);
-        
+
         if (targetRole) {
             await newRole.setPosition(targetRole.position + 1).catch(() => {});
         }
 
         await member.roles.add(newRole);
         userCustomRoles.set(member.id, newRole.id);
-        
+
         const [roleRecord, created] = await CustomRole.findOrCreate({
             where: { userId: member.id },
             defaults: { roleId: newRole.id }
@@ -255,7 +266,6 @@ async function finalizeCustomRoleSetup(guild, member, setupData, iconUrl, replyM
         customRoleSetup.delete(member.id);
 
         const successEmbed = createEmbed(guild, `${E.yildiz} Özel Rol Oluşturuldu`, `**${setupData.name}** isimli özel rolünüz başarıyla oluşturuldu ve size verildi!`, 0x2ECC71);
-
         await replyMethod(successEmbed);
         await sendLog(guild, `${E.yildiz} Özel Rol Oluşturuldu`, `**Oluşturan:** ${member.user.tag}\n**Rol Adı:** ${setupData.name}\n**Renk:** ${setupData.color}`, 0x2ECC71);
     } catch (error) {
@@ -362,7 +372,7 @@ client.on('clientReady', async () => {
     if (process.env.DATABASE_URL) {
         try {
             await sequelize.sync({ alter: true });
-            
+
             const settings = await GuildSettings.findAll();
             settings.forEach(s => {
                 if (s.linkProtection) linkProtection.add(s.guildId);
@@ -371,6 +381,7 @@ client.on('clientReady', async () => {
                 if (s.welcomeChannel) welcomeChannels.set(s.guildId, s.welcomeChannel);
                 if (s.botVoiceChannel) botVoiceChannels.set(s.guildId, s.botVoiceChannel);
                 if (s.ticketStaffRole) ticketStaffRoles.set(s.guildId, s.ticketStaffRole);
+                if (s.punishmentLogChannel) punishmentLogChannels.set(s.guildId, s.punishmentLogChannel);
             });
 
             const roles = await CustomRole.findAll();
@@ -477,6 +488,19 @@ client.on('clientReady', async () => {
             .addSubcommand(s => s
                 .setName('kaldır')
                 .setDescription('Sunucu log sistemini kapatır.')
+            ),
+        new SlashCommandBuilder()
+            .setName('ceza-logs')
+            .setDescription('Ceza loglarının gönderileceği kanalı ayarlar.')
+            .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
+            .addSubcommand(s => s
+                .setName('kanal-ayarla')
+                .setDescription('Kick, ban, mute loglarının gönderileceği kanalı belirler.')
+                .addChannelOption(o => o.setName('kanal').setDescription('Kanal seçin').setRequired(true))
+            )
+            .addSubcommand(s => s
+                .setName('kaldır')
+                .setDescription('Ceza log kanalını kaldırır.')
             ),
         new SlashCommandBuilder()
             .setName('ses')
@@ -665,7 +689,7 @@ client.on('guildMemberAdd', async member => {
     try {
         const newInvites = await member.guild.invites.fetch();
         const oldInvites = guildInvites.get(member.guild.id) || new Map();
-        
+
         const invite = newInvites.find(i => {
             const oldUses = oldInvites.get(i.code) || 0;
             return i.uses > oldUses;
@@ -698,13 +722,7 @@ client.on('guildMemberAdd', async member => {
 });
 
 client.on('guildBanAdd', async ban => {
-    const fetchedLogs = await ban.guild.fetchAuditLogs({ limit: 1, type: AuditLogEvent.MemberBanAdd });
-    const banLog = fetchedLogs.entries.first();
-    let executor = 'Bilinmiyor';
-    if (banLog && banLog.target.id === ban.user.id && banLog.createdAt > Date.now() - 5000) {
-        executor = banLog.executor.tag;
-    }
-    await sendLog(ban.guild, `${E.ban} Kullanıcı Yasaklandı`, `**Kullanıcı:** ${ban.user.tag}\n**Yetkili:** ${executor}\n**Sebep:** ${ban.reason || 'Belirtilmedi'}`, 0xC0392B);
+    await sendPunishmentLog(ban.guild, `${E.ban} Kullanıcı Yasaklandı`, `**Yasaklanan:** ${ban.user.tag}`, 0xC0392B);
 });
 
 client.on('guildBanRemove', async ban => {
@@ -714,18 +732,20 @@ client.on('guildBanRemove', async ban => {
     if (unbanLog && unbanLog.target.id === ban.user.id && unbanLog.createdAt > Date.now() - 5000) {
         executor = unbanLog.executor.tag;
     }
-    await sendLog(ban.guild, `${E.kanalkapa} Yasaklama Kaldırıldı`, `**Kullanıcı:** ${ban.user.tag}\n**Yetkili:** ${executor}`, 0x2ECC71);
+    await sendPunishmentLog(ban.guild, `${E.kanalkapa} Yasaklama Kaldırıldı`, `**Kullanıcı:** ${ban.user.tag}\n**Yetkili:** ${executor}`, 0x2ECC71);
 });
 
 client.on('guildMemberRemove', async member => {
     const fetchedLogs = await member.guild.fetchAuditLogs({ limit: 1, type: AuditLogEvent.MemberKick });
     const kickLog = fetchedLogs.entries.first();
-    
+
     const inviterId = userInvites.get(member.id);
     const inviterText = inviterId ? `<@${inviterId}>` : 'Bilinmiyor';
 
     if (kickLog && kickLog.target.id === member.id && kickLog.createdAt > Date.now() - 5000) {
-        await sendLog(member.guild, `${E.ev} Kullanıcı Atıldı`, `**Kullanıcı:** ${member.user.tag}\n**Yetkili:** ${kickLog.executor.tag}\n**Sebep:** ${kickLog.reason || 'Belirtilmedi'}`, 0xE67E22);
+        const executor = kickLog.executor.tag;
+        const reason = kickLog.reason || 'Belirtilmedi';
+        await sendPunishmentLog(member.guild, `${E.ev} Kullanıcı Atıldı`, `**Yetkili:** ${executor}\n**Atılan:** ${member.user.tag}\n**Sebep:** ${reason}`, 0xE67E22);
     } else {
         const leaveLogId = logChannels.get(member.guild.id);
         if (leaveLogId) {
@@ -736,7 +756,7 @@ client.on('guildMemberRemove', async member => {
             }
         }
     }
-    
+
     userInvites.delete(member.id);
 
     for (const [msgId, gw] of activeGiveaways.entries()) {
@@ -746,7 +766,7 @@ client.on('guildMemberRemove', async member => {
                 { participants: Array.from(gw.participants) },
                 { where: { messageId: msgId } }
             ).catch(() => {});
-            
+
             const channel = client.channels.cache.get(gw.channelId);
             if (channel) {
                 const msg = await channel.messages.fetch(msgId).catch(() => null);
@@ -762,23 +782,9 @@ client.on('guildMemberRemove', async member => {
 
 client.on('guildMemberUpdate', async (oldMember, newMember) => {
     if (!oldMember.isCommunicationDisabled() && newMember.isCommunicationDisabled()) {
-        const fetchedLogs = await newMember.guild.fetchAuditLogs({ limit: 1, type: AuditLogEvent.MemberUpdate });
-        const muteLog = fetchedLogs.entries.first();
-        let executor = 'Bilinmiyor';
-        let reason = 'Belirtilmedi';
-        if (muteLog && muteLog.target.id === newMember.id && muteLog.createdAt > Date.now() - 5000 && muteLog.changes.some(c => c.key === 'communication_disabled_until')) {
-            executor = muteLog.executor.tag;
-            reason = muteLog.reason || 'Belirtilmedi';
-        }
-        await sendLog(newMember.guild, `${E.susturma} Susturuldu`, `**Kullanıcı:** ${newMember.user.tag}\n**Yetkili:** ${executor}\n**Bitiş:** <t:${Math.floor(newMember.communicationDisabledUntilTimestamp / 1000)}:F>\n**Sebep:** ${reason}`, 0xF1C40F);
+        await sendPunishmentLog(newMember.guild, `${E.susturma} Susturuldu`, `**Kullanıcı:** ${newMember.user.tag}\n**Bitiş:** <t:${Math.floor(newMember.communicationDisabledUntilTimestamp / 1000)}:F>`, 0xF1C40F);
     } else if (oldMember.isCommunicationDisabled() && !newMember.isCommunicationDisabled()) {
-        const fetchedLogs = await newMember.guild.fetchAuditLogs({ limit: 1, type: AuditLogEvent.MemberUpdate });
-        const unmuteLog = fetchedLogs.entries.first();
-        let executor = 'Bilinmiyor';
-        if (unmuteLog && unmuteLog.target.id === newMember.id && unmuteLog.createdAt > Date.now() - 5000 && unmuteLog.changes.some(c => c.key === 'communication_disabled_until')) {
-            executor = unmuteLog.executor.tag;
-        }
-        await sendLog(newMember.guild, `${E.susturmaacma} Susturma Kaldırıldı`, `**Kullanıcı:** ${newMember.user.tag}\n**Yetkili:** ${executor}`, 0x2ECC71);
+        await sendPunishmentLog(newMember.guild, `${E.susturmaacma} Susturma Kaldırıldı`, `**Kullanıcı:** ${newMember.user.tag}`, 0x2ECC71);
     }
 });
 
@@ -791,10 +797,10 @@ client.on('messageCreate', async message => {
 
     if (customRoleSetup.has(message.author.id)) {
         const setupData = customRoleSetup.get(message.author.id);
-        
+
         if (setupData.step === 'name') {
             const roleName = message.content;
-            
+
             const row1 = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId('color_FF0000').setLabel('Kırmızı').setStyle(ButtonStyle.Danger),
                 new ButtonBuilder().setCustomId('color_00FF00').setLabel('Yeşil').setStyle(ButtonStyle.Success),
@@ -821,7 +827,7 @@ client.on('messageCreate', async message => {
             );
 
             const colorEmbed = createEmbed(message.guild, 'Özel Rol Kurulumu (Adım 2/3)', `Harika! Rol adını **${roleName}** olarak belirlediniz. Lütfen aşağıdaki butonlardan rolünüzün rengini seçin.`, 0x5865F2);
-            
+
             message.delete().catch(() => {});
             setupData.originalInteraction.editReply({ embeds: [colorEmbed], components: [row1, row2, row3, row4] });
             customRoleSetup.set(message.author.id, { ...setupData, step: 'color', name: roleName });
@@ -843,7 +849,7 @@ client.on('messageCreate', async message => {
                 }
             }
             message.delete().catch(() => {});
-            message.channel.send({ content: `<@${message.author.id}>, lütfen geçerli bir resim yükleyin veya menüden Atla/İptal seçeneğini kullanın.` }).then(m => setTimeout(() => m.delete().catch(()=>{}), 4000));
+            message.channel.send({ content: `<@${message.author.id}>, lütfen geçerli bir resim yükleyin veya menüden Atla/İptal seçeneğini kullanın.` }).then(m => setTimeout(() => m.delete().catch(() => {}), 4000));
             return;
         }
     }
@@ -855,40 +861,35 @@ client.on('messageCreate', async message => {
         .replace(/ü/g, 'u')
         .replace(/ö/g, 'o')
         .replace(/ç/g, 'c');
-    
-const otoYanitlar = {
+
+    const otoYanitlar = {
         'sa': 'Aleykümselam, hoş geldin!',
-        'selamunaleykum': 'Aleykümselam, hoş geldin!', 
+        'selamunaleykum': 'Aleykümselam, hoş geldin!',
         'selam': 'Selam, hoş geldin!',
         'merhaba': 'Merhaba! Nasılsın?',
-        'gunaydin': 'Günaydın!', 
-        'iyiyim sen nasilsin': 'Ben de harikayım, teşekkür ederim!', 
+        'gunaydin': 'Günaydın!',
+        'iyiyim sen nasilsin': 'Ben de harikayım, teşekkür ederim!',
         'kotuyum': 'Bunu duyduğuma üzüldüm.',
         'iyi geceler': 'İyi geceler!',
     };
-    
-      if (otoYanitlar[lowerContent]) {
+
+    if (otoYanitlar[lowerContent]) {
         return message.reply(otoYanitlar[lowerContent]);
     }
-    
+
     if (linkProtection.has(message.guild.id)) {
         if (message.member.permissions.has(PermissionsBitField.Flags.Administrator)) return;
-        
-        const discordInviteRegex = /(?:https?:\/\/)?(?:www\.)?(?:discord\.gg\/|discord(?:app)?\.com\/invite\/)([a-zA-Z0-9-]+)/gi;
-        
-        const allowedInvites = ['azuron']; 
 
+        const discordInviteRegex = /(?:https?:\/\/)?(?:www\.)?(?:discord\.gg\/|discord(?:app)?\.com\/invite\/)([a-zA-Z0-9-]+)/gi;
+        const allowedInvites = ['azuron'];
         const matches = [...message.content.matchAll(discordInviteRegex)];
-        
         const hasIllegalLink = matches.some(match => !allowedInvites.includes(match[1].toLowerCase()));
-        
+
         if (hasIllegalLink) {
             await message.delete().catch(() => {});
-            
             const warningMsg = await message.channel.send({
                 embeds: [createErrorEmbed(message.guild, `<@${message.author.id}>, **Reklam:** Bu sunucuda başka Discord sunucularının davet bağlantılarını paylaşmak yasaktır!`)]
             });
-            
             setTimeout(() => warningMsg.delete().catch(() => {}), 5000);
         }
     }
@@ -918,7 +919,6 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
         });
 
         tempVoiceChannels.add(newChannel.id);
-
         await newState.setChannel(newChannel);
 
         const embed = createEmbed(
@@ -1018,6 +1018,20 @@ client.on('interactionCreate', async interaction => {
             }
         }
 
+        if (commandName === 'ceza-logs') {
+            const sub = options.getSubcommand();
+            if (sub === 'kanal-ayarla') {
+                const targetChannel = options.getChannel('kanal');
+                punishmentLogChannels.set(guild.id, targetChannel.id);
+                await GuildSettings.upsert({ guildId: guild.id, punishmentLogChannel: targetChannel.id });
+                return interaction.reply({ embeds: [createEmbed(guild, `${E.onay} Başarılı`, `Ceza log kanalı başarıyla ${targetChannel} olarak ayarlandı.`, 0x2ECC71)], flags: MessageFlags.Ephemeral });
+            } else if (sub === 'kaldır') {
+                punishmentLogChannels.delete(guild.id);
+                await GuildSettings.update({ punishmentLogChannel: null }, { where: { guildId: guild.id } });
+                return interaction.reply({ embeds: [createEmbed(guild, `${E.onay} Başarılı`, 'Ceza log kanalı kaldırıldı.', 0x2ECC71)], flags: MessageFlags.Ephemeral });
+            }
+        }
+
         if (commandName === 'karşılama') {
             const sub = options.getSubcommand();
             if (sub === 'kanal-ayarla') {
@@ -1034,26 +1048,23 @@ client.on('interactionCreate', async interaction => {
 
         if (commandName === 'çekiliş') {
             const modal = new ModalBuilder().setCustomId('modal_giveaway').setTitle('Çekiliş Başlat');
-
             const titleInput = new TextInputBuilder().setCustomId('gw_title').setLabel('Başlık').setStyle(TextInputStyle.Short).setRequired(true);
             const descInput = new TextInputBuilder().setCustomId('gw_desc').setLabel('Açıklama').setStyle(TextInputStyle.Paragraph).setRequired(true);
             const winnersInput = new TextInputBuilder().setCustomId('gw_winners').setLabel('Kazanan Sayısı').setStyle(TextInputStyle.Short).setRequired(true);
             const durationInput = new TextInputBuilder().setCustomId('gw_duration').setLabel('Süre (Saat)').setStyle(TextInputStyle.Short).setRequired(true);
-
             modal.addComponents(
                 new ActionRowBuilder().addComponents(titleInput),
                 new ActionRowBuilder().addComponents(descInput),
                 new ActionRowBuilder().addComponents(winnersInput),
                 new ActionRowBuilder().addComponents(durationInput)
             );
-
             await interaction.showModal(modal);
         }
 
         if (commandName === 'yeniden-çek') {
             const messageId = options.getString('mesaj_id');
             const gwData = await Giveaway.findOne({ where: { messageId: messageId, status: 'ended' } });
-            
+
             if (!gwData) {
                 return interaction.reply({ content: 'Belirtilen ID ile sona ermiş bir çekiliş bulunamadı.', flags: MessageFlags.Ephemeral });
             }
@@ -1074,7 +1085,7 @@ client.on('interactionCreate', async interaction => {
                     return interaction.reply({ content: 'Yeniden çekiliş başarıyla yapıldı ve kanala gönderildi.', flags: MessageFlags.Ephemeral });
                 }
             }
-            
+
             return interaction.reply({ content: `Çekiliş mesajı bulunamadı ancak kazanan: ${winner}`, flags: MessageFlags.Ephemeral });
         }
 
@@ -1084,7 +1095,7 @@ client.on('interactionCreate', async interaction => {
 
         if (commandName === 'medya') {
             let originalUrl = options.getString('link');
-            
+
             let urlMatch = originalUrl.match(/https?:\/\/[^\s]+/i);
             if (!urlMatch) {
                 if (!originalUrl.startsWith('http')) {
@@ -1097,7 +1108,7 @@ client.on('interactionCreate', async interaction => {
             let parsedUrl;
             try {
                 parsedUrl = new URL(originalUrl);
-            } catch(e) {
+            } catch (e) {
                 return interaction.reply({ content: 'Lütfen geçerli bir URL girin.', flags: MessageFlags.Ephemeral });
             }
 
@@ -1160,18 +1171,15 @@ client.on('interactionCreate', async interaction => {
 
         if (commandName === 'özel') {
             const sub = options.getSubcommand();
-            
+
             if (sub === 'mesaj-ayarla') {
                 if (!member.permissions.has(PermissionsBitField.Flags.Administrator)) {
                     return interaction.reply({ embeds: [createErrorEmbed(guild, 'Bu komutu sadece yöneticiler kullanabilir.')], flags: MessageFlags.Ephemeral });
                 }
-
                 const targetUser = options.getUser('kullanici');
                 const replyMsg = options.getString('mesaj');
-
                 await CustomMessage.upsert({ userId: targetUser.id, replyText: replyMsg });
                 customUserMessages.set(targetUser.id, replyMsg);
-
                 return interaction.reply({ embeds: [createEmbed(guild, 'Özel Mesaj Ayarlandı', `<@${targetUser.id}> bota etiket attığında artık şu yanıt verilecek:\n\n${replyMsg}`, 0x2ECC71)], flags: MessageFlags.Ephemeral });
             }
 
@@ -1179,16 +1187,12 @@ client.on('interactionCreate', async interaction => {
                 if (!member.permissions.has(PermissionsBitField.Flags.Administrator)) {
                     return interaction.reply({ embeds: [createErrorEmbed(guild, 'Bu komutu sadece yöneticiler kullanabilir.')], flags: MessageFlags.Ephemeral });
                 }
-
                 const targetUser = options.getUser('kullanici');
-
                 if (!customUserMessages.has(targetUser.id)) {
                     return interaction.reply({ embeds: [createErrorEmbed(guild, 'Bu kullanıcının sistemde kayıtlı özel bir mesajı bulunmuyor.')], flags: MessageFlags.Ephemeral });
                 }
-
                 await CustomMessage.destroy({ where: { userId: targetUser.id } });
                 customUserMessages.delete(targetUser.id);
-
                 return interaction.reply({ embeds: [createEmbed(guild, 'Özel Mesaj Silindi', `<@${targetUser.id}> kullanıcısının özel mesajı sistemden kaldırıldı.`, 0x2ECC71)], flags: MessageFlags.Ephemeral });
             }
 
@@ -1211,7 +1215,6 @@ client.on('interactionCreate', async interaction => {
                 await interaction.deferReply({ flags: MessageFlags.Ephemeral });
                 const setupEmbed = createEmbed(guild, 'Özel Rol Kurulumu (Adım 1/3)', 'Lütfen oluşturmak istediğiniz özel rolün adını bu kanala yazın.', 0x5865F2);
                 await interaction.editReply({ embeds: [setupEmbed] });
-
                 customRoleSetup.set(member.id, { step: 'name', originalInteraction: interaction });
 
                 setTimeout(() => {
@@ -1237,12 +1240,10 @@ client.on('interactionCreate', async interaction => {
                 }
 
                 const confirmEmbed = createEmbed(guild, 'Özel Rol Silme Onayı', `**${role.name}** isimli özel rolünüzü kalıcı olarak silmek istediğinize emin misiniz?`, 0xE74C3C);
-                
                 const confirmRow = new ActionRowBuilder().addComponents(
                     new ButtonBuilder().setCustomId(`confirm_delete_${roleId}`).setLabel('Evet, Sil').setStyle(ButtonStyle.Danger),
                     new ButtonBuilder().setCustomId('cancel_delete').setLabel('İptal').setStyle(ButtonStyle.Secondary)
                 );
-
                 await interaction.reply({ embeds: [confirmEmbed], components: [confirmRow], flags: MessageFlags.Ephemeral });
             }
         }
@@ -1254,24 +1255,23 @@ client.on('interactionCreate', async interaction => {
                 const guildId = guild.id;
 
                 if (targetRole.position >= guild.members.me.roles.highest.position) {
-                    return interaction.reply({ 
-                        embeds: [createErrorEmbed(guild, `**İşlem Başarısız:** ${targetRole} rolü benim rollerimden daha üstte veya aynı sırada. Lütfen sunucu ayarlarından benim rolümü daha yukarı taşıyın.`)], 
-                        flags: MessageFlags.Ephemeral 
+                    return interaction.reply({
+                        embeds: [createErrorEmbed(guild, `**İşlem Başarısız:** ${targetRole} rolü benim rollerimden daha üstte veya aynı sırada. Lütfen sunucu ayarlarından benim rolümü daha yukarı taşıyın.`)],
+                        flags: MessageFlags.Ephemeral
                     });
                 }
 
                 if (autoRoles.get(guildId) === targetRole.id) {
                     autoRoles.delete(guildId);
                     await GuildSettings.upsert({ guildId: guildId, autoRole: null });
-                    return interaction.reply({ 
-                        embeds: [createEmbed(guild, 'Otomatik Rol Kapatıldı', `Otomatik rol sistemi devre dışı bırakıldı. Artık yeni üyelere ${targetRole} rolü **verilmeyecek**.`, 0xE74C3C)] 
+                    return interaction.reply({
+                        embeds: [createEmbed(guild, 'Otomatik Rol Kapatıldı', `Otomatik rol sistemi devre dışı bırakıldı. Artık yeni üyelere ${targetRole} rolü **verilmeyecek**.`, 0xE74C3C)]
                     });
-                } 
-                else {
+                } else {
                     autoRoles.set(guildId, targetRole.id);
                     await GuildSettings.upsert({ guildId: guildId, autoRole: targetRole.id });
-                    return interaction.reply({ 
-                        embeds: [createEmbed(guild, 'Otomatik Rol Ayarlandı', `Otomatik rol başarıyla ${targetRole} olarak ayarlandı. Sunucuya yeni katılanlara bu rol verilecek.`, 0x2ECC71)] 
+                    return interaction.reply({
+                        embeds: [createEmbed(guild, 'Otomatik Rol Ayarlandı', `Otomatik rol başarıyla ${targetRole} olarak ayarlandı. Sunucuya yeni katılanlara bu rol verilecek.`, 0x2ECC71)]
                     });
                 }
             }
@@ -1297,7 +1297,6 @@ client.on('interactionCreate', async interaction => {
                 .setEmoji(E_ID.duzenle);
 
             const row = new ActionRowBuilder().addComponents(formButton);
-
             await interaction.reply({ content: 'Form başarıyla kanala gönderildi.', flags: MessageFlags.Ephemeral });
             const formMessage = await interaction.channel.send({ embeds: [formEmbed], components: [row] });
 
@@ -1311,9 +1310,7 @@ client.on('interactionCreate', async interaction => {
                             .setStyle(ButtonStyle.Secondary)
                             .setEmoji(E_ID.kanalkapa)
                             .setDisabled(true);
-                        
                         const disabledRow = new ActionRowBuilder().addComponents(disabledButton);
-                        
                         await fetchedMessage.edit({ components: [disabledRow] });
                     }
                 } catch (error) {}
@@ -1322,7 +1319,6 @@ client.on('interactionCreate', async interaction => {
 
         if (commandName === 'yardım') {
             const embed = createEmbed(guild, 'Yardım Menüsü', `${E.yardim} Lütfen detaylarını görmek istediğiniz kategoriyi aşağıdaki menüden seçin.`, 0x5865F2);
-            
             const menu = new StringSelectMenuBuilder()
                 .setCustomId('help_menu')
                 .setPlaceholder('Kategori Seçin...')
@@ -1332,7 +1328,6 @@ client.on('interactionCreate', async interaction => {
                     new StringSelectMenuOptionBuilder().setLabel('Takviyeci Komutları').setValue('help_booster').setEmoji(E_ID.yildiz),
                     new StringSelectMenuOptionBuilder().setLabel('Sistemler').setValue('help_systems').setEmoji(E_ID.bakim)
                 );
-            
             const row = new ActionRowBuilder().addComponents(menu);
             return interaction.reply({ embeds: [embed], components: [row], flags: MessageFlags.Ephemeral });
         }
@@ -1350,7 +1345,6 @@ client.on('interactionCreate', async interaction => {
             if (!interaction.member.permissions.has(PermissionsBitField.Flags.ManageMessages)) {
                 return interaction.reply({ embeds: [createErrorEmbed(guild, 'Mesajlar silinemedi, sunucuda Mesajları Yönet yetkisine sahip olmalısınız.')], flags: MessageFlags.Ephemeral });
             }
-
             const miktar = options.getInteger('miktar');
             try {
                 const silinenler = await interaction.channel.bulkDelete(miktar, true);
@@ -1392,12 +1386,10 @@ client.on('interactionCreate', async interaction => {
                 if (existingCategory) {
                     return interaction.reply({ embeds: [createErrorEmbed(guild, `Bilet sistemi zaten kurulu.`)], flags: MessageFlags.Ephemeral });
                 }
-                
                 const roleMenu = new RoleSelectMenuBuilder()
                     .setCustomId('ticket_staff_role_select')
                     .setPlaceholder('Biletlerle ilgilenecek rolü seçiniz.')
                     .setMaxValues(1);
-                    
                 const row = new ActionRowBuilder().addComponents(roleMenu);
                 return interaction.reply({ content: 'Kurulum Aşaması: Biletlerle ilgilenecek yetkili rolünü seçin.', components: [row], flags: MessageFlags.Ephemeral });
             }
@@ -1412,7 +1404,7 @@ client.on('interactionCreate', async interaction => {
             if (targetMember.kickable) {
                 await targetMember.kick(reason);
                 interaction.reply({ embeds: [createEmbed(guild, 'Uzaklaştırma (Kick)', `**${target.tag}** sunucudan uzaklaştırılmıştır.\n**Gerekçe:** ${reason}`, 0xE67E22)] });
-                await sendLog(guild, `${E.ev} Kullanıcı Atıldı`, `**Yetkili:** ${member.user.tag}\n**Atılan:** ${target.tag}\n**Sebep:** ${reason}`, 0xE67E22);
+                await sendPunishmentLog(guild, `${E.ev} Kullanıcı Atıldı`, `**Yetkili:** ${member.user.tag}\n**Atılan:** ${target.tag}\n**Sebep:** ${reason}`, 0xE67E22);
             } else {
                 interaction.reply({ embeds: [createErrorEmbed(guild, '**İşlem Başarısız:** Bu kullanıcının rolü benim rolümden daha yüksek veya eşit olduğu için işlem yapılamıyor.')], flags: MessageFlags.Ephemeral });
             }
@@ -1425,7 +1417,7 @@ client.on('interactionCreate', async interaction => {
             try {
                 await guild.members.ban(target, { reason: reason });
                 interaction.reply({ embeds: [createEmbed(guild, 'Yasaklama (Ban)', `**${target.tag}** sunucudan kalıcı olarak yasaklanmıştır.\n**Gerekçe:** ${reason}`, 0xC0392B)] });
-                await sendLog(guild, `${E.ban} Kullanıcı Yasaklandı`, `**Yetkili:** ${member.user.tag}\n**Yasaklanan:** ${target.tag}\n**Sebep:** ${reason}`, 0xC0392B);
+                await sendPunishmentLog(guild, `${E.ban} Kullanıcı Yasaklandı`, `**Yetkili:** ${member.user.tag}\n**Yasaklanan:** ${target.tag}\n**Sebep:** ${reason}`, 0xC0392B);
             } catch (e) {
                 interaction.reply({ embeds: [createErrorEmbed(guild, '**İşlem Başarısız:** Kullanıcıyı yasaklamak için yeterli yetkiye sahip değilim.')], flags: MessageFlags.Ephemeral });
             }
@@ -1441,7 +1433,7 @@ client.on('interactionCreate', async interaction => {
             if (targetMember.moderatable) {
                 await targetMember.timeout(duration * 60000, reason);
                 interaction.reply({ embeds: [createEmbed(guild, 'Susturma', `**${target.tag}** kullanıcısına **${duration} dakika** boyunca susturulma uygulanmıştır.`, 0xF1C40F)] });
-                await sendLog(guild, `${E.susturma} Kullanıcı Susturuldu`, `**Yetkili:** ${member.user.tag}\n**Susturulan:** ${target.tag}\n**Süre:** ${duration} Dakika\n**Sebep:** ${reason}`, 0xF1C40F);
+                await sendPunishmentLog(guild, `${E.susturma} Kullanıcı Susturuldu`, `**Yetkili:** ${member.user.tag}\n**Susturulan:** ${target.tag}\n**Süre:** ${duration} Dakika\n**Sebep:** ${reason}`, 0xF1C40F);
             } else {
                 interaction.reply({ embeds: [createErrorEmbed(guild, '**Hata:** Bu kullanıcı Yönetici yetkisine sahip veya rolü benden yüksek.')], flags: MessageFlags.Ephemeral });
             }
@@ -1454,7 +1446,7 @@ client.on('interactionCreate', async interaction => {
             if (targetMember.moderatable) {
                 await targetMember.timeout(null);
                 interaction.reply({ embeds: [createEmbed(guild, 'Susturma Kaldırıldı', `**${target.tag}** kullanıcısının susturması kaldırılmıştır.`, 0x2ECC71)] });
-                await sendLog(guild, `${E.susturmaacma} Susturma Kaldırıldı`, `**Yetkili:** ${member.user.tag}\n**Kullanıcı:** ${target.tag}`, 0x2ECC71);
+                await sendPunishmentLog(guild, `${E.susturmaacma} Susturma Kaldırıldı`, `**Yetkili:** ${member.user.tag}\n**Kullanıcı:** ${target.tag}`, 0x2ECC71);
             } else {
                 interaction.reply({ embeds: [createErrorEmbed(guild, '**Hata:** İşlem gerçekleştirilemedi. Yetkilerimi kontrol ediniz.')], flags: MessageFlags.Ephemeral });
             }
@@ -1465,32 +1457,28 @@ client.on('interactionCreate', async interaction => {
             if (sub === 'ayarla') {
                 const mesajText = options.getString('mesaj');
                 const saatInterval = options.getNumber('saat');
-
                 await AutoMessage.create({
                     channelId: interaction.channel.id,
                     messageText: mesajText,
                     intervalHours: saatInterval,
                     lastSentAt: Date.now()
                 });
-
-                return interaction.reply({ 
-                    embeds: [createEmbed(guild, `${E.onay} Hatırlatma Ayarlandı`, `Bu kanala her **${saatInterval} saatte bir** aşağıdaki mesaj gönderilecek:\n\n\`${mesajText}\``, 0x2ECC71)], 
-                    flags: MessageFlags.Ephemeral 
+                return interaction.reply({
+                    embeds: [createEmbed(guild, `${E.onay} Hatırlatma Ayarlandı`, `Bu kanala her **${saatInterval} saatte bir** aşağıdaki mesaj gönderilecek:\n\n\`${mesajText}\``, 0x2ECC71)],
+                    flags: MessageFlags.Ephemeral
                 });
             }
-
             if (sub === 'sil') {
                 const deletedCount = await AutoMessage.destroy({ where: { channelId: interaction.channel.id } });
-                
                 if (deletedCount > 0) {
-                    return interaction.reply({ 
-                        embeds: [createEmbed(guild, `${E.copkutusu} Hatırlatmalar Silindi`, `Bu kanala ait **${deletedCount}** adet aktif hatırlatma başarıyla durduruldu ve silindi.`, 0x2ECC71)], 
-                        flags: MessageFlags.Ephemeral 
+                    return interaction.reply({
+                        embeds: [createEmbed(guild, `${E.copkutusu} Hatırlatmalar Silindi`, `Bu kanala ait **${deletedCount}** adet aktif hatırlatma başarıyla durduruldu ve silindi.`, 0x2ECC71)],
+                        flags: MessageFlags.Ephemeral
                     });
                 } else {
-                    return interaction.reply({ 
-                        embeds: [createErrorEmbed(guild, 'Bu kanalda ayarlanmış herhangi bir otomatik hatırlatma bulunamadı.')], 
-                        flags: MessageFlags.Ephemeral 
+                    return interaction.reply({
+                        embeds: [createErrorEmbed(guild, 'Bu kanalda ayarlanmış herhangi bir otomatik hatırlatma bulunamadı.')],
+                        flags: MessageFlags.Ephemeral
                     });
                 }
             }
@@ -1501,12 +1489,11 @@ client.on('interactionCreate', async interaction => {
             if (sub === 'kapa') {
                 const sure = options.getInteger('sure');
                 await interaction.channel.permissionOverwrites.edit(interaction.guild.roles.everyone, { SendMessages: false });
-                
                 if (sure) {
                     interaction.reply({ embeds: [createEmbed(guild, 'Kanal Kilitlendi', `${E.kanalkapa} Kanal ${sure} dakika boyunca kilitlendi.`, 0xE74C3C)] });
                     setTimeout(async () => {
-                        await interaction.channel.permissionOverwrites.edit(interaction.guild.roles.everyone, { SendMessages: null }).catch(()=>{});
-                        interaction.channel.send({ embeds: [createEmbed(guild, 'Kanal Kilidi Açıldı', `${E.kanalac} Süre dolduğu için kanal kilidi otomatik olarak açıldı.`, 0x2ECC71)] }).catch(()=>{});
+                        await interaction.channel.permissionOverwrites.edit(interaction.guild.roles.everyone, { SendMessages: null }).catch(() => {});
+                        interaction.channel.send({ embeds: [createEmbed(guild, 'Kanal Kilidi Açıldı', `${E.kanalac} Süre dolduğu için kanal kilidi otomatik olarak açıldı.`, 0x2ECC71)] }).catch(() => {});
                     }, sure * 60000);
                 } else {
                     interaction.reply({ embeds: [createEmbed(guild, 'Kanal Kilitlendi', `${E.kanalkapa} Kanal süresiz olarak kilitlendi.`, 0xE74C3C)] });
@@ -1523,7 +1510,7 @@ client.on('interactionCreate', async interaction => {
         const selectedRoleId = interaction.values[0];
         ticketStaffRoles.set(interaction.guild.id, selectedRoleId);
         await GuildSettings.upsert({ guildId: interaction.guild.id, ticketStaffRole: selectedRoleId });
-        
+
         const ticketCategory = await interaction.guild.channels.create({
             name: `🎫 Bilet Sistemi`,
             type: ChannelType.GuildCategory
@@ -1575,7 +1562,6 @@ client.on('interactionCreate', async interaction => {
             );
 
         const ticketMenuRow = new ActionRowBuilder().addComponents(ticketOpenMenu);
-
         await ticketSetupChannel.send({ embeds: [supportEmbed], components: [ticketMenuRow] });
 
         await interaction.editReply({
@@ -1589,7 +1575,7 @@ client.on('interactionCreate', async interaction => {
         if (interaction.customId === 'help_menu') {
             const value = interaction.values[0];
             let newEmbed;
-            
+
             if (value === 'help_genel') {
                 newEmbed = createEmbed(interaction.guild, `${E.kesif} Genel Komutlar`, '`/yardım` - Botun komut listesini gösterir.\n`/öneri` - Yönetim ekibine bir öneri gönderin.\n`/ping` - Botun gecikme süresini gösterir.\n`/sunucu-bilgi` - Sunucu hakkındaki detaylı bilgileri gösterir.\n`/kullanıcı-bilgi` - Belirtilen kullanıcı hakkında bilgi verir.\n`/medya` - TikTok videosunu oynatır.', 0x5865F2);
             } else if (value === 'help_admin') {
@@ -1599,7 +1585,7 @@ client.on('interactionCreate', async interaction => {
             } else if (value === 'help_systems') {
                 newEmbed = createEmbed(interaction.guild, `${E.bakim} Sistemler`, `**Ses Sistemi:** Özel oda kurmak için **Oda Oluştur** kanalına girmeniz yeterlidir.\n**Bilet Sistemi:** **bilet-oluştur** kanalındaki menüden destek bileti açabilirsiniz.`, 0x5865F2);
             }
-            
+
             return interaction.update({ embeds: [newEmbed] });
         }
 
@@ -1674,7 +1660,6 @@ client.on('interactionCreate', async interaction => {
                     .setEmoji(E_ID.kanalkapa);
 
                 const btnRow = new ActionRowBuilder().addComponents(closeAgainButton);
-
                 await interaction.reply({ embeds: [reopenEmbed], components: [btnRow] });
                 await sendLog(guild, `${E.kanalac} Bilet Yeniden Açıldı`, `**Kanal:** ${channel.name}\n**Açan Yetkili:** ${interaction.user.tag}`, 0x2ECC71);
             }
@@ -1717,7 +1702,7 @@ client.on('interactionCreate', async interaction => {
                 interaction.reply({ embeds: [createEmbed(interaction.guild, 'Oda Kilidi Açıldı', 'Oda kilidi açılmıştır.', 0x2ECC71)], flags: MessageFlags.Ephemeral });
             } else if (selection === 'action_delete') {
                 interaction.reply({ embeds: [createEmbed(interaction.guild, 'Silme İşlemi', 'Kanal siliniyor...', 0xE74C3C)], flags: MessageFlags.Ephemeral });
-                tempVoiceChannels.delete(channel.id)
+                tempVoiceChannels.delete(channel.id);
                 await channel.delete();
             } else if (selection === 'action_info') {
                 const memberCount = channel.members.size;
@@ -1765,15 +1750,13 @@ client.on('interactionCreate', async interaction => {
                     .setLabel('Çekilişten Ayrıl')
                     .setStyle(ButtonStyle.Danger);
                 const row = new ActionRowBuilder().addComponents(leaveBtn);
-
-                return interaction.reply({ 
-                    content: 'Zaten çekilişe katıldın. Çekilişten ayrılmak için "Çekilişten Ayrıl" tuşuna basınız.', 
+                return interaction.reply({
+                    content: 'Zaten çekilişe katıldın. Çekilişten ayrılmak için "Çekilişten Ayrıl" tuşuna basınız.',
                     components: [row],
-                    flags: MessageFlags.Ephemeral 
+                    flags: MessageFlags.Ephemeral
                 });
             } else {
                 gw.participants.add(interaction.user.id);
-
                 await Giveaway.update(
                     { participants: Array.from(gw.participants) },
                     { where: { messageId: interaction.message.id } }
@@ -1782,7 +1765,6 @@ client.on('interactionCreate', async interaction => {
                 const joinBtn = new ButtonBuilder().setCustomId('btn_gw_join').setLabel(`${gw.participants.size}`).setEmoji(E_ID.konfeti).setStyle(ButtonStyle.Primary);
                 const partBtn = new ButtonBuilder().setCustomId('btn_gw_participants').setLabel('Katılımcılar').setEmoji(E_ID.uye).setStyle(ButtonStyle.Secondary);
                 await interaction.message.edit({ components: [new ActionRowBuilder().addComponents(joinBtn, partBtn)] });
-
                 return interaction.reply({ content: `Çekilişe başarıyla katıldın! ${E.konfeti}`, flags: MessageFlags.Ephemeral });
             }
         }
@@ -1794,7 +1776,6 @@ client.on('interactionCreate', async interaction => {
 
             if (gw.participants.has(interaction.user.id)) {
                 gw.participants.delete(interaction.user.id);
-                
                 await Giveaway.update(
                     { participants: Array.from(gw.participants) },
                     { where: { messageId: msgId } }
@@ -1821,7 +1802,6 @@ client.on('interactionCreate', async interaction => {
             if (!gw) {
                 return interaction.reply({ content: 'Bu çekilişe ait veri bulunamadı.', flags: MessageFlags.Ephemeral });
             }
-
             const pageData = getParticipantsPageData(gw, 1);
             return interaction.reply({ embeds: pageData.embeds, components: pageData.components, flags: MessageFlags.Ephemeral });
         }
@@ -1839,7 +1819,6 @@ client.on('interactionCreate', async interaction => {
 
             let newPage = action === 'next' ? currentPage + 1 : currentPage - 1;
             const pageData = getParticipantsPageData(gw, newPage);
-            
             return interaction.update({ embeds: pageData.embeds, components: pageData.components });
         }
 
@@ -1859,7 +1838,6 @@ client.on('interactionCreate', async interaction => {
 
             const setupData = customRoleSetup.get(userId);
             const hexColor = interaction.customId.replace('color_', '#');
-            
             customRoleSetup.set(userId, { ...setupData, step: 'icon', color: hexColor });
 
             const row = new ActionRowBuilder().addComponents(
@@ -1867,19 +1845,17 @@ client.on('interactionCreate', async interaction => {
                 new ButtonBuilder().setCustomId('cancel_setup').setLabel('İptal Et').setStyle(ButtonStyle.Danger)
             );
 
-            await interaction.update({ 
-                embeds: [createEmbed(interaction.guild, 'Özel Rol Kurulumu (Adım 3/3)', `Rol rengini belirlediniz. İsteğe bağlı olarak bu kanala bir resim göndererek rolünüze ikon ekleyebilirsiniz.\nİstemiyorsanız **Atla** butonuna basabilirsiniz.`, 0x5865F2)], 
-                components: [row] 
+            await interaction.update({
+                embeds: [createEmbed(interaction.guild, 'Özel Rol Kurulumu (Adım 3/3)', `Rol rengini belirlediniz. İsteğe bağlı olarak bu kanala bir resim göndererek rolünüze ikon ekleyebilirsiniz.\nİstemiyorsanız **Atla** butonuna basabilirsiniz.`, 0x5865F2)],
+                components: [row]
             });
         }
 
         if (interaction.customId === 'skip_icon') {
             const userId = interaction.user.id;
             if (!customRoleSetup.has(userId) || customRoleSetup.get(userId).step !== 'icon') return;
-
             const setupData = customRoleSetup.get(userId);
             await interaction.deferUpdate();
-            
             await finalizeCustomRoleSetup(interaction.guild, interaction.member, setupData, null, async (embed) => {
                 await interaction.editReply({ embeds: [embed], components: [] });
             });
@@ -1888,7 +1864,6 @@ client.on('interactionCreate', async interaction => {
         if (interaction.customId === 'cancel_setup') {
             const userId = interaction.user.id;
             if (!customRoleSetup.has(userId)) return;
-
             customRoleSetup.delete(userId);
             await interaction.update({ embeds: [createEmbed(interaction.guild, 'İptal Edildi', 'Özel rol kurulum işlemi iptal edildi.', 0xE74C3C)], components: [] });
         }
@@ -1918,15 +1893,15 @@ client.on('interactionCreate', async interaction => {
         if (interaction.customId === 'cancel_delete') {
             await interaction.update({ embeds: [createEmbed(interaction.guild, 'İşlem İptal Edildi', 'Rol silme işlemi iptal edildi.', 0x5865F2)], components: [] });
         }
-        
+
         if (interaction.customId === 'btn_open_mod_form') {
             if (pendingApplications.has(interaction.user.id)) {
-                return interaction.reply({ 
-                    embeds: [createErrorEmbed(interaction.guild, 'Zaten yetkililer tarafından değerlendirilmeyi bekleyen bir başvurunuz bulunuyor. Lütfen sonucun açıklanmasını bekleyin.')], 
-                    flags: MessageFlags.Ephemeral 
+                return interaction.reply({
+                    embeds: [createErrorEmbed(interaction.guild, 'Zaten yetkililer tarafından değerlendirilmeyi bekleyen bir başvurunuz bulunuyor. Lütfen sonucun açıklanmasını bekleyin.')],
+                    flags: MessageFlags.Ephemeral
                 });
             }
-            
+
             const modal1 = new ModalBuilder().setCustomId('modal_mod_part1').setTitle('Moderatör Başvurusu (Aşama 1/2)');
 
             const q1 = new TextInputBuilder()
@@ -1935,28 +1910,28 @@ client.on('interactionCreate', async interaction => {
                 .setStyle(TextInputStyle.Paragraph)
                 .setPlaceholder('Daha önce herhangi bir Discord sunucusunda yetkili/moderatör oldun mu? Neler yaptın?')
                 .setRequired(true);
-                
+
             const q2 = new TextInputBuilder()
                 .setCustomId('q2')
                 .setLabel('Discord aktiflik süren ve saatlerin?')
                 .setStyle(TextInputStyle.Paragraph)
                 .setPlaceholder("Günlük olarak ortalama kaç saat aktif olabiliyorsun ve hangi saat aralıklarındasın?")
                 .setRequired(true);
-                
+
             const q3 = new TextInputBuilder()
                 .setCustomId('q3')
                 .setLabel('Neden bizi seçiyorsun?')
                 .setStyle(TextInputStyle.Paragraph)
                 .setPlaceholder('Neden bizim sunucumuzda moderatör olmak istiyorsun?')
                 .setRequired(true);
-                
+
             const q4 = new TextInputBuilder()
                 .setCustomId('q4')
                 .setLabel('Spam/Raid durumunda ne yaparsın?')
                 .setStyle(TextInputStyle.Paragraph)
                 .setPlaceholder('Sunucuya bir anda spam veya reklam saldırısı başlarsa alacağın önlemler ne olur?')
                 .setRequired(true);
-                
+
             const q5 = new TextInputBuilder()
                 .setCustomId('q5')
                 .setLabel('Tartışan üyelere nasıl müdahale edersin?')
@@ -1989,14 +1964,14 @@ client.on('interactionCreate', async interaction => {
                 .setStyle(TextInputStyle.Paragraph)
                 .setPlaceholder('Sence iyi bir moderatörün en önemli üç özelliği ne olmalıdır?')
                 .setRequired(true);
-                
+
             const q7 = new TextInputBuilder()
                 .setCustomId('q7')
                 .setLabel('Sohbeti canlandırmak için ne yaparsın?')
                 .setStyle(TextInputStyle.Paragraph)
                 .setPlaceholder('Sunucudaki üyelerin daha aktif olması ve sohbetin canlanması için neler yapabilirsin?')
                 .setRequired(true);
-                
+
             const q8 = new TextInputBuilder()
                 .setCustomId('q8')
                 .setLabel('Kararsız kaldığın durumda ne yaparsın?')
@@ -2054,7 +2029,6 @@ client.on('interactionCreate', async interaction => {
                 );
 
             const actionsRow = new ActionRowBuilder().addComponents(closedActionsMenu);
-
             await interaction.reply({ embeds: [closedEmbed], components: [actionsRow] });
             await sendLog(
                 interaction.guild,
@@ -2072,7 +2046,6 @@ client.on('interactionCreate', async interaction => {
             const isApprove = interaction.customId.startsWith('mod_approve_');
             const targetUserId = interaction.customId.split('_')[2];
             const targetUser = await client.users.fetch(targetUserId).catch(() => null);
-
             pendingApplications.delete(targetUserId);
 
             const originalEmbed = EmbedBuilder.from(interaction.message.embeds[0]);
@@ -2083,14 +2056,14 @@ client.on('interactionCreate', async interaction => {
 
                 const targetMember = await interaction.guild.members.fetch(targetUserId).catch(() => null);
                 if (targetMember) {
-                    await targetMember.roles.add('1473256763028672512').catch(err => {});
+                    await targetMember.roles.add('1473256763028672512').catch(() => {});
                 }
-                
+
                 if (targetUser) {
                     const dmEmbed = createEmbed(
                         interaction.guild,
-                        `${E.onay} Başvurunuz Onaylandı`, 
-                        `Merhaba **${targetUser.username}**, \n\n**${interaction.guild.name}** sunucusu için yapmış olduğunuz moderatör başvurusu yetkili ekibimiz tarafından incelendi ve **ONAYLANDI**! \n\nTebrikler! Ekibimiz sizinle en kısa sürede iletişime geçecektir.`, 
+                        `${E.onay} Başvurunuz Onaylandı`,
+                        `Merhaba **${targetUser.username}**, \n\n**${interaction.guild.name}** sunucusu için yapmış olduğunuz moderatör başvurusu yetkili ekibimiz tarafından incelendi ve **ONAYLANDI**! \n\nTebrikler! Ekibimiz sizinle en kısa sürede iletişime geçecektir.`,
                         0x2ECC71
                     );
                     await targetUser.send({ embeds: [dmEmbed] }).catch(() => {});
@@ -2098,12 +2071,12 @@ client.on('interactionCreate', async interaction => {
             } else {
                 originalEmbed.setColor(0xE74C3C);
                 originalEmbed.addFields({ name: 'Durum', value: `${E.red} <@${interaction.user.id}> tarafından reddedildi.` });
-                
+
                 if (targetUser) {
                     const dmEmbed = createEmbed(
                         interaction.guild,
-                        `${E.red} Başvurunuz Reddedildi`, 
-                        `Merhaba **${targetUser.username}**, \n\n**${interaction.guild.name}** sunucusu için yapmış olduğunuz moderatör başvurusu yetkili ekibimiz tarafından detaylıca incelendi ve maalesef **REDDEDİLDİ**. \n\nİlginiz için teşekkür ederiz. İlerleyen dönemlerde eksiklerinizi tamamlayarak tekrar başvuru yapabilirsiniz.`, 
+                        `${E.red} Başvurunuz Reddedildi`,
+                        `Merhaba **${targetUser.username}**, \n\n**${interaction.guild.name}** sunucusu için yapmış olduğunuz moderatör başvurusu yetkili ekibimiz tarafından detaylıca incelendi ve maalesef **REDDEDİLDİ**. \n\nİlginiz için teşekkür ederiz. İlerleyen dönemlerde eksiklerinizi tamamlayarak tekrar başvuru yapabilirsiniz.`,
                         0xE74C3C
                     );
                     await targetUser.send({ embeds: [dmEmbed] }).catch(() => {});
@@ -2147,7 +2120,6 @@ client.on('interactionCreate', async interaction => {
                 .setStyle(ButtonStyle.Secondary);
 
             const row = new ActionRowBuilder().addComponents(joinButton, participantsButton);
-
             const msg = await interaction.reply({ embeds: [embed], components: [row], fetchReply: true });
 
             activeGiveaways.set(msg.id, {
@@ -2201,10 +2173,10 @@ client.on('interactionCreate', async interaction => {
 
             const row = new ActionRowBuilder().addComponents(nextButton);
 
-            await interaction.reply({ 
-                content: `${E.onay} İlk 5 soruyu başarıyla doldurdun! Başvurunu tamamlamak için aşağıdaki butona tıklayarak son 3 soruyu yanıtla.`, 
+            await interaction.reply({
+                content: `${E.onay} İlk 5 soruyu başarıyla doldurdun! Başvurunu tamamlamak için aşağıdaki butona tıklayarak son 3 soruyu yanıtla.`,
                 components: [row],
-                flags: MessageFlags.Ephemeral 
+                flags: MessageFlags.Ephemeral
             });
         }
 
@@ -2259,11 +2231,8 @@ client.on('interactionCreate', async interaction => {
                         .setEmoji(E_ID.red);
 
                     const actionRow = new ActionRowBuilder().addComponents(approveBtn, rejectBtn);
-
                     await resultChannel.send({ embeds: [appEmbed], components: [actionRow] });
-                    
                     pendingApplications.add(interaction.user.id);
-                    
                     await interaction.editReply({ embeds: [createEmbed(interaction.guild, 'Başarılı', 'Başvuru formunuz yetkililere başarıyla iletildi. İlginiz için teşekkür ederiz.', 0x2ECC71)] });
                 } else {
                     await interaction.editReply({ embeds: [createErrorEmbed(interaction.guild, 'Başvuru gönderilecek kanal bulunamadı. Lütfen log kanalı ayarlamalarını kontrol edin.')] });
@@ -2312,7 +2281,7 @@ client.on('interactionCreate', async interaction => {
             }
 
             const safeUsername = user.username.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || 'kullanici';
-            
+
             const permissionOverwrites = [
                 {
                     id: guild.id,
@@ -2527,7 +2496,7 @@ client.on('messageDelete', async message => {
 
     const logChannelId = logChannels.get(message.guild.id);
     if (!logChannelId) return;
-    
+
     const logChannel = message.guild.channels.cache.get(logChannelId);
     if (!logChannel) return;
 
@@ -2572,7 +2541,6 @@ client.on('messageDelete', async message => {
 
     const embeds = [];
     const baseEmbedUrl = "https://discord.com";
-
     const mainEmbed = createEmbed(message.guild, `${E.copkutusu} Mesaj Silindi`, description, 0xE74C3C).setURL(baseEmbedUrl);
 
     if (images.length > 0) {
@@ -2598,7 +2566,7 @@ client.on('messageUpdate', async (oldMessage, newMessage) => {
 
     const logChannelId = logChannels.get(oldMessage.guild.id);
     if (!logChannelId) return;
-    
+
     const logChannel = oldMessage.guild.channels.cache.get(logChannelId);
     if (!logChannel) return;
 
