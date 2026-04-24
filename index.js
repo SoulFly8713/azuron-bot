@@ -1018,19 +1018,27 @@ client.on('interactionCreate', async interaction => {
             }
         }
 
-        if (commandName === 'ceza-logs') {
-            const sub = options.getSubcommand();
-            if (sub === 'kanal-ayarla') {
-                const targetChannel = options.getChannel('kanal');
-                punishmentLogChannels.set(guild.id, targetChannel.id);
-                await GuildSettings.upsert({ guildId: guild.id, punishmentLogChannel: targetChannel.id });
-                return interaction.reply({ embeds: [createEmbed(guild, `${E.onay} Başarılı`, `Ceza log kanalı başarıyla ${targetChannel} olarak ayarlandı.`, 0x2ECC71)], flags: MessageFlags.Ephemeral });
-            } else if (sub === 'kaldır') {
-                punishmentLogChannels.delete(guild.id);
-                await GuildSettings.update({ punishmentLogChannel: null }, { where: { guildId: guild.id } });
-                return interaction.reply({ embeds: [createEmbed(guild, `${E.onay} Başarılı`, 'Ceza log kanalı kaldırıldı.', 0x2ECC71)], flags: MessageFlags.Ephemeral });
-            }
+if (commandName === 'ceza-logs') {
+    const sub = options.getSubcommand();
+    if (sub === 'kanal-ayarla') {
+        const targetChannel = options.getChannel('kanal');
+        punishmentLogChannels.set(guild.id, targetChannel.id);
+        try {
+            await GuildSettings.upsert({ guildId: guild.id, punishmentLogChannel: targetChannel.id });
+        } catch (err) {
+            console.error('DB Hatası:', err);
         }
+        return interaction.reply({ embeds: [createEmbed(guild, `${E.onay} Başarılı`, `Ceza log kanalı başarıyla ${targetChannel} olarak ayarlandı.`, 0x2ECC71)], flags: MessageFlags.Ephemeral });
+    } else if (sub === 'kaldır') {
+        punishmentLogChannels.delete(guild.id);
+        try {
+            await GuildSettings.update({ punishmentLogChannel: null }, { where: { guildId: guild.id } });
+        } catch (err) {
+            console.error('DB Hatası:', err);
+        }
+        return interaction.reply({ embeds: [createEmbed(guild, `${E.onay} Başarılı`, 'Ceza log kanalı kaldırıldı.', 0x2ECC71)], flags: MessageFlags.Ephemeral });
+    }
+}
 
         if (commandName === 'karşılama') {
             const sub = options.getSubcommand();
