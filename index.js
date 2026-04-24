@@ -188,6 +188,7 @@ const customUserMessages = new Map();
 const guildInvites = new Map();
 const userInvites = new Map();
 const tempVoiceChannels = new Set();
+const mutedByCommand = new Set();
 
 function createEmbed(guild, title, description, color = 0x5865F2) {
     const embed = new EmbedBuilder()
@@ -722,7 +723,13 @@ client.on('guildMemberAdd', async member => {
 });
 
 client.on('guildBanAdd', async ban => {
-    await sendPunishmentLog(ban.guild, `${E.ban} Kullanıcı Yasaklandı`, `**Yasaklanan:** ${ban.user.tag}`, 0xC0392B);
+    const fetchedLogs = await ban.guild.fetchAuditLogs({ limit: 1, type: AuditLogEvent.MemberBanAdd });
+    const banLog = fetchedLogs.entries.first();
+    let executor = 'Bilinmiyor';
+    if (banLog && banLog.target.id === ban.user.id && banLog.createdAt > Date.now() - 5000) {
+        executor = banLog.executor.tag;
+    }
+    await sendPunishmentLog(ban.guild, `${E.ban} Kullanıcı Yasaklandı`, `**Yetkili:** ${executor}\n**Yasaklanan:** ${ban.user.tag}`, 0xC0392B);
 });
 
 client.on('guildBanRemove', async ban => {
@@ -781,10 +788,29 @@ client.on('guildMemberRemove', async member => {
 });
 
 client.on('guildMemberUpdate', async (oldMember, newMember) => {
+    if (mutedByCommand.has(newMember.id)) {
+        mutedByCommand.delete(newMember.id); // Temizle
+        return;
+    }
+
     if (!oldMember.isCommunicationDisabled() && newMember.isCommunicationDisabled()) {
-        await sendPunishmentLog(newMember.guild, `${E.susturma} Susturuldu`, `**Kullanıcı:** ${newMember.user.tag}\n**Bitiş:** <t:${Math.floor(newMember.communicationDisabledUntilTimestamp / 1000)}:F>`, 0xF1C40F);
+        const fetchedLogs = await newMember.guild.fetchAuditLogs({ limit: 1, type: AuditLogEvent.MemberUpdate });
+        const muteLog = fetchedLogs.entries.first();
+        let executor = 'Bilinmiyor';
+        let reason = 'Belirtilmedi';
+        if (muteLog && muteLog.target.id === newMember.id && muteLog.createdAt > Date.now() - 5000 && muteLog.changes.some(c => c.key === 'communication_disabled_until')) {
+            executor = muteLog.executor.tag;
+            reason = muteLog.reason || 'Belirtilmedi';
+        }
+        await sendLog(newMember.guild, `${E.susturma} Susturuldu`, `**Kullanıcı:** ${newMember.user.tag}\n**Yetkili:** ${executor}\n**Bitiş:** <t:${Math.floor(newMember.communicationDisabledUntilTimestamp / 1000)}:F>\n**Sebep:** ${reason}`, 0xF1C40F);
     } else if (oldMember.isCommunicationDisabled() && !newMember.isCommunicationDisabled()) {
-        await sendPunishmentLog(newMember.guild, `${E.susturmaacma} Susturma Kaldırıldı`, `**Kullanıcı:** ${newMember.user.tag}`, 0x2ECC71);
+        const fetchedLogs = await newMember.guild.fetchAuditLogs({ limit: 1, type: AuditLogEvent.MemberUpdate });
+        const unmuteLog = fetchedLogs.entries.first();
+        let executor = 'Bilinmiyor';
+        if (unmuteLog && unmuteLog.target.id === newMember.id && unmuteLog.createdAt > Date.now() - 5000 && unmuteLog.changes.some(c => c.key === 'communication_disabled_until')) {
+            executor = unmuteLog.executor.tag;
+        }
+        await sendLog(newMember.guild, `${E.susturmaacma} Susturma Kaldırıldı`, `**Kullanıcı:** ${newMember.user.tag}\n**Yetkili:** ${executor}`, 0x2ECC71);
     }
 });
 
@@ -1439,6 +1465,7 @@ if (commandName === 'ceza-logs') {
             if (!targetMember) return interaction.reply({ embeds: [createErrorEmbed(guild, 'Belirtilen kullanıcı sunucuda bulunamadı.')], flags: MessageFlags.Ephemeral });
             if (target.id === member.id) return interaction.reply({ embeds: [createErrorEmbed(guild, 'Kendinize susturma işlemi uygulayamazsınız.')], flags: MessageFlags.Ephemeral });
             if (targetMember.moderatable) {
+                mutedByCommand.add(target.id);
                 await targetMember.timeout(duration * 60000, reason);
                 interaction.reply({ embeds: [createEmbed(guild, 'Susturma', `**${target.tag}** kullanıcısına **${duration} dakika** boyunca susturulma uygulanmıştır.`, 0xF1C40F)] });
                 await sendPunishmentLog(guild, `${E.susturma} Kullanıcı Susturuldu`, `**Yetkili:** ${member.user.tag}\n**Susturulan:** ${target.tag}\n**Süre:** ${duration} Dakika\n**Sebep:** ${reason}`, 0xF1C40F);
@@ -1452,6 +1479,7 @@ if (commandName === 'ceza-logs') {
             const targetMember = await guild.members.fetch(target.id).catch(() => null);
             if (!targetMember) return interaction.reply({ embeds: [createErrorEmbed(guild, 'Üye sunucuda bulunamadı.')], flags: MessageFlags.Ephemeral });
             if (targetMember.moderatable) {
+                mutedByCommand.add(target.id);
                 await targetMember.timeout(null);
                 interaction.reply({ embeds: [createEmbed(guild, 'Susturma Kaldırıldı', `**${target.tag}** kullanıcısının susturması kaldırılmıştır.`, 0x2ECC71)] });
                 await sendPunishmentLog(guild, `${E.susturmaacma} Susturma Kaldırıldı`, `**Yetkili:** ${member.user.tag}\n**Kullanıcı:** ${target.tag}`, 0x2ECC71);
