@@ -992,7 +992,13 @@ client.on('interactionCreate', async interaction => {
         const { commandName, options, member, guild } = interaction;
 
       if (commandName === 'sohbet') {
-            await interaction.deferReply(); 
+            try {
+                await interaction.deferReply(); 
+            } catch (err) {
+                console.log("Sunucu gecikmesi.");
+                return; 
+            }
+            
             const userMessage = options.getString('mesaj');
 
             const FREE_MODELS = [
