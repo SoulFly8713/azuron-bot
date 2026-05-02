@@ -1003,7 +1003,7 @@ client.on('interactionCreate', async interaction => {
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        model: "google/gemma-4-26b-a4b-it:free", 
+                        model: "meta-llama/llama-3.1-8b-instruct:free"
                         messages: [
                             {
                                 role: "system",
