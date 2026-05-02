@@ -1002,12 +1002,9 @@ client.on('interactionCreate', async interaction => {
             const userMessage = options.getString('mesaj');
 
             const FREE_MODELS = [
+                "meta-llama/llama-3.3-70b-instruct:free",
                 "meta-llama/llama-3.1-8b-instruct:free",
-                "deepseek/deepseek-v3-0324:free",
-                "deepseek/deepseek-r1:free",
-                "google/gemma-4-26b-a4b-it:free",
-                "nvidia/nemotron-3-super-120b-a12b:free",
-                "meta-llama/llama-3.3-70b-instruct:free"
+                "deepseek/deepseek-v3-0324:free"
             ];
 
             const shuffledModels = FREE_MODELS.sort(() => 0.5 - Math.random());
