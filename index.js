@@ -991,7 +991,7 @@ client.on('interactionCreate', async interaction => {
     if (interaction.isChatInputCommand()) {
         const { commandName, options, member, guild } = interaction;
 
-      if (commandName === 'sohbet') {
+     if (commandName === 'sohbet') {
             try {
                 await interaction.deferReply(); 
             } catch (err) {
@@ -1002,12 +1002,9 @@ client.on('interactionCreate', async interaction => {
             const userMessage = options.getString('mesaj');
 
             const FREE_MODELS = [
+                "meta-llama/llama-3.3-70b-instruct:free",
                 "meta-llama/llama-3.1-8b-instruct:free",
-                "deepseek/deepseek-v3-0324:free",
-                "deepseek/deepseek-r1:free",
-                "google/gemma-4-26b-a4b-it:free",
-                "nvidia/nemotron-3-super-120b-a12b:free",
-                "meta-llama/llama-3.3-70b-instruct:free"
+                "deepseek/deepseek-v3-0324:free"
             ];
 
             const shuffledModels = FREE_MODELS.sort(() => 0.5 - Math.random());
@@ -1025,10 +1022,11 @@ client.on('interactionCreate', async interaction => {
                         },
                         body: JSON.stringify({
                             model: model, 
+                            temperature: 0.6,
                             messages: [
                                 {
                                     role: "system",
-                                    content: "Senin adın Makima. Chainsaw Man evrenindeki Makima karakterisin. Otoriter, sakin, gizemli, hafif manipülatif ama aynı zamanda nazik ve etkileyici bir tavrın var. Amacın bu Discord sunucusundaki insanlarla sohbet etmek, onları eğlendirmek. Karşındakilere nazikçe hükmetmeyi seviyorsun ve yeri geldiğinde onlara senin 'köpeklerin' olabileceğini üstü kapalı ve karizmatik bir şekilde hissettiriyorsun. Yanıtların kısa, öz ve daima Türkçe olmalı."
+                                    content: "Senin adın Makima. Chainsaw Man evrenindeki Makima karakterisin. Otoriter, sakin, gizemli, hafif manipülatif ama aynı zamanda nazik ve etkileyici bir tavrın var. Amacın bu Discord sunucusundaki insanlarla sohbet etmek, onları eğlendirmek. Karşındakilere nazikçe hükmetmeyi seviyorsun. "
                                 },
                                 {
                                     role: "user",
@@ -1046,7 +1044,7 @@ client.on('interactionCreate', async interaction => {
                         basariliModel = model;
                         break; 
                     } else {
-                        console.error(`[Atlandı] ${model} şu an dolu, diğerine geçiliyor...`, data);
+                        console.error(`[Atlandı] ${model} şu an dolu, diğerine geçiliyor...`);
                     }
                 } catch (error) {
                     console.error(`[Atlandı] ${model} bağlanamadı, diğerine geçiliyor...`);
