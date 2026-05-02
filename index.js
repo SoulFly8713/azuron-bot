@@ -1028,6 +1028,7 @@ client.on('interactionCreate', async interaction => {
                         
                     await interaction.editReply({ content: finalResponse });
                 } else {
+                    console.error("OpenRouter API Hatası:", data);
                     await interaction.editReply({ content: 'Makima şu an meşgul, daha sonra tekrar dene.' });
                 }
             } catch (error) {
