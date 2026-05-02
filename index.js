@@ -991,11 +991,11 @@ client.on('interactionCreate', async interaction => {
     if (interaction.isChatInputCommand()) {
         const { commandName, options, member, guild } = interaction;
 
-     if (commandName === 'sohbet') {
+   if (commandName === 'sohbet') {
             try {
                 await interaction.deferReply(); 
             } catch (err) {
-                console.log("Sunucu gecikmesi: Discord 3 saniye kuralına takıldı. Komut reddedildi.");
+                console.log("Sunucu gecikmesi yasandi.");
                 return; 
             }
             
@@ -1007,54 +1007,47 @@ client.on('interactionCreate', async interaction => {
                 "deepseek/deepseek-v3-0324:free"
             ];
 
-            const shuffledModels = FREE_MODELS.sort(() => 0.5 - Math.random());
-            
-            let finalResponse = null;
-            let basariliModel = null;
+            const fetchPromises = FREE_MODELS.map(async (model) => {
+                const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        model: model, 
+                        temperature: 0.6,
+                        messages: [
+                            {
+                                role: "system",
+                                content: "Senin adın Makima. Chainsaw Man evrenindeki Makima karakterisin. Otoriter, sakin, gizemli, hafif manipülatif ama aynı zamanda nazik ve etkileyici bir tavrın var. Amacın bu Discord sunucusundaki insanlarla sohbet etmek, onları eğlendirmek. Karşındakilere nazikçe hükmetmeyi seviyorsun ve yeri geldiğinde onlara senin 'köpeklerin' olabileceğini üstü kapalı ve karizmatik bir şekilde hissettiriyorsun. Yanıtların kısa, öz ve daima Türkçe olmalı."
+                            },
+                            {
+                                role: "user",
+                                content: userMessage
+                            }
+                        ]
+                    })
+                });
 
-            for (const model of shuffledModels) {
-                try {
-                    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-                        method: 'POST',
-                        headers: {
-                            'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            model: model, 
-                            temperature: 0.6,
-                            messages: [
-                                {
-                                    role: "system",
-                                    content: "Senin adın Makima. Chainsaw Man evrenindeki Makima karakterisin. Otoriter, sakin, gizemli, hafif manipülatif ama aynı zamanda nazik ve etkileyici bir tavrın var. Amacın bu Discord sunucusundaki insanlarla sohbet etmek, onları eğlendirmek. Karşındakilere nazikçe hükmetmeyi seviyorsun. "
-                                },
-                                {
-                                    role: "user",
-                                    content: userMessage
-                                }
-                            ]
-                        })
-                    });
-
-                    const data = await response.json();
-                    
-                    if (data.choices && data.choices.length > 0) {
-                        const aiResponse = data.choices[0].message.content;
-                        finalResponse = aiResponse.length > 1950 ? aiResponse.substring(0, 1950) + "..." : aiResponse;
-                        basariliModel = model;
-                        break; 
-                    } else {
-                        console.error(`[Atlandı] ${model} şu an dolu, diğerine geçiliyor...`);
-                    }
-                } catch (error) {
-                    console.error(`[Atlandı] ${model} bağlanamadı, diğerine geçiliyor...`);
+                const data = await response.json();
+                
+                if (data.choices && data.choices.length > 0) {
+                    return { model: model, content: data.choices[0].message.content };
+                } else {
+                    throw new Error("Hata");
                 }
-            }
+            });
 
-            if (finalResponse) {
+            try {
+                const fastestResponse = await Promise.any(fetchPromises);
+                const finalResponse = fastestResponse.content.length > 1950 
+                    ? fastestResponse.content.substring(0, 1950) + "..." 
+                    : fastestResponse.content;
+                    
                 await interaction.editReply({ content: finalResponse });
-                console.log(`Makima başarıyla cevap verdi. Kullanılan model: ${basariliModel}`);
-            } else {
+                console.log(`Kazanan model: ${fastestResponse.model}`);
+            } catch (error) {
                 await interaction.editReply({ content: 'Makima şu an çok meşgul, lütfen 1-2 dakika sonra tekrar dene.' });
             }
         }
