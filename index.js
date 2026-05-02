@@ -991,11 +991,11 @@ client.on('interactionCreate', async interaction => {
     if (interaction.isChatInputCommand()) {
         const { commandName, options, member, guild } = interaction;
 
-      if (commandName === 'sohbet') {
+  if (commandName === 'sohbet') {
             try {
-                await interaction.deferReply(); 
+                await interaction.deferReply({ flags: MessageFlags.Ephemeral }); 
             } catch (err) {
-                console.log("Sunucu gecikmesi: Discord 3 saniye kuralına takıldı. Komut reddedildi.");
+                console.log("Sunucu gecikmesi: Discord 3 saniye kuralına takıldı.");
                 return; 
             }
             
@@ -1004,57 +1004,57 @@ client.on('interactionCreate', async interaction => {
             const FREE_MODELS = [
                 "meta-llama/llama-3.3-70b-instruct:free",
                 "meta-llama/llama-3.1-8b-instruct:free",
-                "deepseek/deepseek-v3-0324:free"
+                "google/gemma-2-9b-it:free",
+                "mistralai/mistral-7b-instruct:free",
+                "microsoft/phi-3-mini-128k-instruct:free",
+                "qwen/qwen-2-7b-instruct:free"
             ];
 
-            const shuffledModels = FREE_MODELS.sort(() => 0.5 - Math.random());
-            
-            let finalResponse = null;
-            let basariliModel = null;
+            const fetchPromises = FREE_MODELS.map(async (model) => {
+                const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        model: model, 
+                        temperature: 0.6,
+                        messages: [
+                            {
+                                role: "system",
+                                content: "Senin adın Makima. Chainsaw Man evrenindeki Makima karakterisin. Otoriter, sakin, gizemli, hafif manipülatif ama aynı zamanda nazik ve etkileyici bir tavrın var. Amacın bu Discord sunucusundaki insanlarla sohbet etmek, onları eğlendirmek. Karşındakilere nazikçe hükmetmeyi seviyorsun."
+                            },
+                            {
+                                role: "user",
+                                content: userMessage
+                            }
+                        ]
+                    })
+                });
 
-            for (const model of shuffledModels) {
-                try {
-                    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-                        method: 'POST',
-                        headers: {
-                            'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            model: model, 
-                            messages: [
-                                {
-                                    role: "system",
-                                    content: "Senin adın Makima. Chainsaw Man evrenindeki Makima karakterisin. Otoriter, sakin, gizemli, hafif manipülatif ama aynı zamanda nazik ve etkileyici bir tavrın var. Amacın bu Discord sunucusundaki insanlarla sohbet etmek, onları eğlendirmek. Karşındakilere nazikçe hükmetmeyi seviyorsun."
-                                },
-                                {
-                                    role: "user",
-                                    content: userMessage
-                                }
-                            ]
-                        })
-                    });
-
-                    const data = await response.json();
-                    
-                    if (data.choices && data.choices.length > 0) {
-                        const aiResponse = data.choices[0].message.content;
-                        finalResponse = aiResponse.length > 1950 ? aiResponse.substring(0, 1950) + "..." : aiResponse;
-                        basariliModel = model;
-                        break; 
-                    } else {
-                        console.error(`[Atlandı] ${model} şu an dolu, diğerine geçiliyor...`, data);
-                    }
-                } catch (error) {
-                    console.error(`[Atlandı] ${model} bağlanamadı, diğerine geçiliyor...`);
+                const data = await response.json();
+                
+                if (data.choices && data.choices.length > 0) {
+                    return { model: model, content: data.choices[0].message.content };
+                } else {
+                    throw new Error("Dolu");
                 }
-            }
+            });
 
-            if (finalResponse) {
+            try {
+                const fastestResponse = await Promise.any(fetchPromises);
+                const uyariYazisi = "\n\n-# Makima hata yapabilir, saçmalayabilir. Önemli bilgileri kontrol edin.";
+                
+                const finalResponse = fastestResponse.content.length > 1900 
+                    ? fastestResponse.content.substring(0, 1900) + "..." + uyariYazisi
+                    : fastestResponse.content + uyariYazisi;
+                    
                 await interaction.editReply({ content: finalResponse });
-                console.log(`Makima başarıyla cevap verdi. Kullanılan model: ${basariliModel}`);
-            } else {
+                console.log(`Makima başarıyla cevap verdi. Kazanan model: ${fastestResponse.model}`);
+            } catch (error) {
                 await interaction.editReply({ content: 'Makima şu an çok meşgul, lütfen 1-2 dakika sonra tekrar dene.' });
+                console.log("Tüm ücretsiz modeller meşgul veya hata verdi.");
             }
         }
         
