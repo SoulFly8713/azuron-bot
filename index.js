@@ -991,9 +991,19 @@ client.on('interactionCreate', async interaction => {
     if (interaction.isChatInputCommand()) {
         const { commandName, options, member, guild } = interaction;
 
-        if (commandName === 'sohbet') {
+      if (commandName === 'sohbet') {
             await interaction.deferReply(); 
             const userMessage = options.getString('mesaj');
+
+            const FREE_MODELS = [
+                "deepseek/deepseek-v3-0324:free",
+                "deepseek/deepseek-r1:free",
+                "google/gemma-4-26b-a4b-it:free",
+                "nvidia/nemotron-3-super-120b-a12b:free",
+                "meta-llama/llama-3.3-70b-instruct:free"
+            ];
+
+            const rastgeleModel = FREE_MODELS[Math.floor(Math.random() * FREE_MODELS.length)];
 
             try {
                 const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -1003,7 +1013,7 @@ client.on('interactionCreate', async interaction => {
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        model: "meta-llama/llama-3.1-8b-instruct:free",
+                        model: rastgeleModel, 
                         messages: [
                             {
                                 role: "system",
@@ -1028,7 +1038,7 @@ client.on('interactionCreate', async interaction => {
                         
                     await interaction.editReply({ content: finalResponse });
                 } else {
-                    console.error("OpenRouter API Hatası:", data);
+                    console.error(`OpenRouter API Hatası (${rastgeleModel}):`, data);
                     await interaction.editReply({ content: 'Makima şu an meşgul, daha sonra tekrar dene.' });
                 }
             } catch (error) {
@@ -1036,7 +1046,7 @@ client.on('interactionCreate', async interaction => {
                 await interaction.editReply({ content: 'Makima ile iletişim kurulurken bir hata oluştu.' });
             }
         }
-
+        
         if (commandName === 'ses') {
             const sub = options.getSubcommand();
             if (sub === 'bağla') {
