@@ -640,7 +640,11 @@ client.on('clientReady', async () => {
             .addSubcommand(s => s
                 .setName('aç')
                 .setDescription('Kilitli kanalın kilidini açar.')
-            )
+            ),
+        new SlashCommandBuilder()
+            .setName('sohbet')
+            .setDescription('Makima ile sohbet et.')
+            .addStringOption(o => o.setName('mesaj').setDescription('Makima\'ya ne söylemek istersin?').setRequired(true))
     ];
 
     const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
@@ -983,10 +987,54 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
         deleteTimers.set(oldState.channel.id, timer);
     }
 });
-
 client.on('interactionCreate', async interaction => {
     if (interaction.isChatInputCommand()) {
         const { commandName, options, member, guild } = interaction;
+
+        if (commandName === 'sohbet') {
+            await interaction.deferReply(); 
+            const userMessage = options.getString('mesaj');
+
+            try {
+                const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        model: "meta-llama/llama-3.1-8b-instruct:free", 
+                        messages: [
+                            {
+                                role: "system",
+                                content: "Senin adın Makima. Chainsaw Man evrenindeki Makima karakterisin. Otoriter, sakin, gizemli, hafif manipülatif ama aynı zamanda nazik ve etkileyici bir tavrın var. Amacın bu Discord sunucusundaki insanlarla sohbet etmek, onları eğlendirmek. Karşındakilere nazikçe hükmetmeyi seviyorsun ve yeri geldiğinde onlara senin 'köpeklerin' olabileceğini üstü kapalı ve karizmatik bir şekilde hissettiriyorsun. Yanıtların kısa, öz ve daima Türkçe olmalı."
+                            },
+                            {
+                                role: "user",
+                                content: userMessage
+                            }
+                        ]
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (data.choices && data.choices.length > 0) {
+                    const aiResponse = data.choices[0].message.content;
+                    
+                    const finalResponse = aiResponse.length > 1950 
+                        ? aiResponse.substring(0, 1950) + "..." 
+                        : aiResponse;
+                        
+                    await interaction.editReply({ content: finalResponse });
+                } else {
+                    await interaction.editReply({ content: 'Makima şu an meşgul, daha sonra tekrar dene.' });
+                }
+            } catch (error) {
+                console.error("OpenRouter Hatası:", error);
+                await interaction.editReply({ content: 'Makima ile iletişim kurulurken bir hata oluştu.' });
+            }
+        }
 
         if (commandName === 'ses') {
             const sub = options.getSubcommand();
