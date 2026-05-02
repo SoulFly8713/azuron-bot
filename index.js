@@ -991,63 +991,72 @@ client.on('interactionCreate', async interaction => {
     if (interaction.isChatInputCommand()) {
         const { commandName, options, member, guild } = interaction;
 
-   if (commandName === 'sohbet') {
+      if (commandName === 'sohbet') {
             try {
                 await interaction.deferReply(); 
             } catch (err) {
-                console.log("Sunucu gecikmesi yasandi.");
+                console.log("Sunucu gecikmesi: Discord 3 saniye kuralına takıldı. Komut reddedildi.");
                 return; 
             }
             
             const userMessage = options.getString('mesaj');
 
             const FREE_MODELS = [
-                "meta-llama/llama-3.3-70b-instruct:free",
                 "meta-llama/llama-3.1-8b-instruct:free",
-                "deepseek/deepseek-v3-0324:free"
+                "deepseek/deepseek-v3-0324:free",
+                "deepseek/deepseek-r1:free",
+                "google/gemma-4-26b-a4b-it:free",
+                "nvidia/nemotron-3-super-120b-a12b:free",
+                "meta-llama/llama-3.3-70b-instruct:free"
             ];
 
-            const fetchPromises = FREE_MODELS.map(async (model) => {
-                const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        model: model, 
-                        temperature: 0.6,
-                        messages: [
-                            {
-                                role: "system",
-                                content: "Senin adın Makima. Chainsaw Man evrenindeki Makima karakterisin. Otoriter, sakin, gizemli, hafif manipülatif ama aynı zamanda nazik ve etkileyici bir tavrın var. Amacın bu Discord sunucusundaki insanlarla sohbet etmek, onları eğlendirmek. Karşındakilere nazikçe hükmetmeyi seviyorsun ve yeri geldiğinde onlara senin 'köpeklerin' olabileceğini üstü kapalı ve karizmatik bir şekilde hissettiriyorsun. Yanıtların kısa, öz ve daima Türkçe olmalı."
-                            },
-                            {
-                                role: "user",
-                                content: userMessage
-                            }
-                        ]
-                    })
-                });
+            const shuffledModels = FREE_MODELS.sort(() => 0.5 - Math.random());
+            
+            let finalResponse = null;
+            let basariliModel = null;
 
-                const data = await response.json();
-                
-                if (data.choices && data.choices.length > 0) {
-                    return { model: model, content: data.choices[0].message.content };
-                } else {
-                    throw new Error("Hata");
-                }
-            });
+            for (const model of shuffledModels) {
+                try {
+                    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            model: model, 
+                            messages: [
+                                {
+                                    role: "system",
+                                    content: "Senin adın Makima. Chainsaw Man evrenindeki Makima karakterisin. Otoriter, sakin, gizemli, hafif manipülatif ama aynı zamanda nazik ve etkileyici bir tavrın var. Amacın bu Discord sunucusundaki insanlarla sohbet etmek, onları eğlendirmek. Karşındakilere nazikçe hükmetmeyi seviyorsun ve yeri geldiğinde onlara senin 'köpeklerin' olabileceğini üstü kapalı ve karizmatik bir şekilde hissettiriyorsun. Yanıtların kısa, öz ve daima Türkçe olmalı."
+                                },
+                                {
+                                    role: "user",
+                                    content: userMessage
+                                }
+                            ]
+                        })
+                    });
 
-            try {
-                const fastestResponse = await Promise.any(fetchPromises);
-                const finalResponse = fastestResponse.content.length > 1950 
-                    ? fastestResponse.content.substring(0, 1950) + "..." 
-                    : fastestResponse.content;
+                    const data = await response.json();
                     
+                    if (data.choices && data.choices.length > 0) {
+                        const aiResponse = data.choices[0].message.content;
+                        finalResponse = aiResponse.length > 1950 ? aiResponse.substring(0, 1950) + "..." : aiResponse;
+                        basariliModel = model;
+                        break; 
+                    } else {
+                        console.error(`[Atlandı] ${model} şu an dolu, diğerine geçiliyor...`, data);
+                    }
+                } catch (error) {
+                    console.error(`[Atlandı] ${model} bağlanamadı, diğerine geçiliyor...`);
+                }
+            }
+
+            if (finalResponse) {
                 await interaction.editReply({ content: finalResponse });
-                console.log(`Kazanan model: ${fastestResponse.model}`);
-            } catch (error) {
+                console.log(`Makima başarıyla cevap verdi. Kullanılan model: ${basariliModel}`);
+            } else {
                 await interaction.editReply({ content: 'Makima şu an çok meşgul, lütfen 1-2 dakika sonra tekrar dene.' });
             }
         }
