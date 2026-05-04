@@ -107,6 +107,7 @@ const GuildSettings = sequelize.define('GuildSettings', {
     linkProtection: { type: DataTypes.BOOLEAN, defaultValue: false },
     autoRole: { type: DataTypes.STRING, allowNull: true },
     logChannel: { type: DataTypes.STRING, allowNull: true },
+    cezaLogChannel: { type: DataTypes.STRING, allowNull: true },
     welcomeChannel: { type: DataTypes.STRING, allowNull: true },
     botVoiceChannel: { type: DataTypes.STRING, allowNull: true },
     ticketStaffRole: { type: DataTypes.STRING, allowNull: true }
@@ -176,6 +177,7 @@ const formCache = new Map();
 const pendingApplications = new Set();
 const autoRoles = new Map();
 const logChannels = new Map();
+const cezaLogChannels = new Map();
 const welcomeChannels = new Map();
 const botVoiceChannels = new Map();
 const ticketStaffRoles = new Map();
@@ -214,6 +216,15 @@ async function sendLog(guild, title, description, color = 0xE67E22) {
     const logChannelId = logChannels.get(guild.id);
     if (!logChannelId) return;
     const channel = guild.channels.cache.get(logChannelId);
+    if (channel) {
+        await channel.send({ embeds: [createEmbed(guild, title, description, color)] }).catch(() => {});
+    }
+}
+
+async function sendCezaLog(guild, title, description, color = 0xE67E22) {
+    const cezaChannelId = cezaLogChannels.get(guild.id);
+    if (!cezaChannelId) return;
+    const channel = guild.channels.cache.get(cezaChannelId);
     if (channel) {
         await channel.send({ embeds: [createEmbed(guild, title, description, color)] }).catch(() => {});
     }
@@ -368,6 +379,7 @@ client.on('clientReady', async () => {
                 if (s.linkProtection) linkProtection.add(s.guildId);
                 if (s.autoRole) autoRoles.set(s.guildId, s.autoRole);
                 if (s.logChannel) logChannels.set(s.guildId, s.logChannel);
+                if (s.cezaLogChannel) cezaLogChannels.set(s.guildId, s.cezaLogChannel);
                 if (s.welcomeChannel) welcomeChannels.set(s.guildId, s.welcomeChannel);
                 if (s.botVoiceChannel) botVoiceChannels.set(s.guildId, s.botVoiceChannel);
                 if (s.ticketStaffRole) ticketStaffRoles.set(s.guildId, s.ticketStaffRole);
@@ -477,6 +489,19 @@ client.on('clientReady', async () => {
             .addSubcommand(s => s
                 .setName('kaldır')
                 .setDescription('Sunucu log sistemini kapatır.')
+            ),
+        new SlashCommandBuilder()
+            .setName('ceza-logs')
+            .setDescription('Ceza log kanalı ayarları')
+            .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
+            .addSubcommand(s => s
+                .setName('ayarla')
+                .setDescription('Ban, kick, mute gibi ceza işlemlerinin gönderileceği kanalı belirler.')
+                .addChannelOption(o => o.setName('kanal').setDescription('Kanal seçin').setRequired(true))
+            )
+            .addSubcommand(s => s
+                .setName('kaldır')
+                .setDescription('Ceza log sistemini kapatır.')
             ),
         new SlashCommandBuilder()
             .setName('ses')
@@ -705,20 +730,26 @@ client.on('guildBanAdd', async ban => {
     const fetchedLogs = await ban.guild.fetchAuditLogs({ limit: 1, type: AuditLogEvent.MemberBanAdd });
     const banLog = fetchedLogs.entries.first();
     let executor = 'Bilinmiyor';
+    let executorId = null;
     if (banLog && banLog.target.id === ban.user.id && banLog.createdAt > Date.now() - 5000) {
         executor = banLog.executor.tag;
+        executorId = banLog.executor.id;
     }
-    await sendLog(ban.guild, `${E.ban} Kullanıcı Yasaklandı`, `**Kullanıcı:** ${ban.user.tag}\n**Yetkili:** ${executor}\n**Sebep:** ${ban.reason || 'Belirtilmedi'}`, 0xC0392B);
+    if (executorId === client.user.id) return;
+    await sendCezaLog(ban.guild, `${E.ban} Kullanıcı Yasaklandı`, `**Kullanıcı:** ${ban.user.tag}\n**Yetkili:** ${executor}\n**Sebep:** ${ban.reason || 'Belirtilmedi'}`, 0xC0392B);
 });
 
 client.on('guildBanRemove', async ban => {
     const fetchedLogs = await ban.guild.fetchAuditLogs({ limit: 1, type: AuditLogEvent.MemberBanRemove });
     const unbanLog = fetchedLogs.entries.first();
     let executor = 'Bilinmiyor';
+    let executorId = null;
     if (unbanLog && unbanLog.target.id === ban.user.id && unbanLog.createdAt > Date.now() - 5000) {
         executor = unbanLog.executor.tag;
+        executorId = unbanLog.executor.id;
     }
-    await sendLog(ban.guild, `${E.kanalkapa} Yasaklama Kaldırıldı`, `**Kullanıcı:** ${ban.user.tag}\n**Yetkili:** ${executor}`, 0x2ECC71);
+    if (executorId === client.user.id) return; 
+    await sendCezaLog(ban.guild, `${E.kanalkapa} Yasaklama Kaldırıldı`, `**Kullanıcı:** ${ban.user.tag}\n**Yetkili:** ${executor}`, 0x2ECC71);
 });
 
 client.on('guildMemberRemove', async member => {
@@ -729,7 +760,9 @@ client.on('guildMemberRemove', async member => {
     const inviterText = inviterId ? `<@${inviterId}>` : 'Bilinmiyor';
 
     if (kickLog && kickLog.target.id === member.id && kickLog.createdAt > Date.now() - 5000) {
-        await sendLog(member.guild, `${E.ev} Kullanıcı Atıldı`, `**Kullanıcı:** ${member.user.tag}\n**Yetkili:** ${kickLog.executor.tag}\n**Sebep:** ${kickLog.reason || 'Belirtilmedi'}`, 0xE67E22);
+        if (kickLog.executor.id !== client.user.id) {
+            await sendCezaLog(member.guild, `${E.ev} Kullanıcı Atıldı`, `**Kullanıcı:** ${member.user.tag}\n**Yetkili:** ${kickLog.executor.tag}\n**Sebep:** ${kickLog.reason || 'Belirtilmedi'}`, 0xE67E22);
+        }
     } else {
         const leaveLogId = logChannels.get(member.guild.id);
         if (leaveLogId) {
@@ -769,20 +802,26 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
         const fetchedLogs = await newMember.guild.fetchAuditLogs({ limit: 1, type: AuditLogEvent.MemberUpdate });
         const muteLog = fetchedLogs.entries.first();
         let executor = 'Bilinmiyor';
+        let executorId = null;
         let reason = 'Belirtilmedi';
         if (muteLog && muteLog.target.id === newMember.id && muteLog.createdAt > Date.now() - 5000 && muteLog.changes.some(c => c.key === 'communication_disabled_until')) {
             executor = muteLog.executor.tag;
+            executorId = muteLog.executor.id;
             reason = muteLog.reason || 'Belirtilmedi';
         }
-        await sendLog(newMember.guild, `${E.susturma} Susturuldu`, `**Kullanıcı:** ${newMember.user.tag}\n**Yetkili:** ${executor}\n**Bitiş:** <t:${Math.floor(newMember.communicationDisabledUntilTimestamp / 1000)}:F>\n**Sebep:** ${reason}`, 0xF1C40F);
+        if (executorId === client.user.id) return;
+        await sendCezaLog(newMember.guild, `${E.susturma} Susturuldu`, `**Kullanıcı:** ${newMember.user.tag}\n**Yetkili:** ${executor}\n**Bitiş:** <t:${Math.floor(newMember.communicationDisabledUntilTimestamp / 1000)}:F>\n**Sebep:** ${reason}`, 0xF1C40F);
     } else if (oldMember.isCommunicationDisabled() && !newMember.isCommunicationDisabled()) {
         const fetchedLogs = await newMember.guild.fetchAuditLogs({ limit: 1, type: AuditLogEvent.MemberUpdate });
         const unmuteLog = fetchedLogs.entries.first();
         let executor = 'Bilinmiyor';
+        let executorId = null;
         if (unmuteLog && unmuteLog.target.id === newMember.id && unmuteLog.createdAt > Date.now() - 5000 && unmuteLog.changes.some(c => c.key === 'communication_disabled_until')) {
             executor = unmuteLog.executor.tag;
+            executorId = unmuteLog.executor.id;
         }
-        await sendLog(newMember.guild, `${E.susturmaacma} Susturma Kaldırıldı`, `**Kullanıcı:** ${newMember.user.tag}\n**Yetkili:** ${executor}`, 0x2ECC71);
+        if (executorId === client.user.id) return;
+        await sendCezaLog(newMember.guild, `${E.susturmaacma} Susturma Kaldırıldı`, `**Kullanıcı:** ${newMember.user.tag}\n**Yetkili:** ${executor}`, 0x2ECC71);
     }
 });
 
@@ -860,7 +899,7 @@ client.on('messageCreate', async message => {
         .replace(/ö/g, 'o')
         .replace(/ç/g, 'c');
     
-const otoYanitlar = {
+    const otoYanitlar = {
         'sa': 'Aleykümselam, hoş geldin!',
         'selamunaleykum': 'Aleykümselam, hoş geldin!', 
         'selam': 'Selam, hoş geldin!',
@@ -987,9 +1026,24 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
         deleteTimers.set(oldState.channel.id, timer);
     }
 });
+
 client.on('interactionCreate', async interaction => {
     if (interaction.isChatInputCommand()) {
         const { commandName, options, member, guild } = interaction;
+
+        if (commandName === 'ceza-logs') {
+            const sub = options.getSubcommand();
+            if (sub === 'ayarla') {
+                const targetChannel = options.getChannel('kanal');
+                cezaLogChannels.set(guild.id, targetChannel.id);
+                await GuildSettings.upsert({ guildId: guild.id, cezaLogChannel: targetChannel.id });
+                return interaction.reply({ embeds: [createEmbed(guild, `${E.onay} Başarılı`, `Ceza log kanalı başarıyla ${targetChannel} olarak ayarlandı.`, 0x2ECC71)], flags: MessageFlags.Ephemeral });
+            } else if (sub === 'kaldır') {
+                cezaLogChannels.delete(guild.id);
+                await GuildSettings.update({ cezaLogChannel: null }, { where: { guildId: guild.id } });
+                return interaction.reply({ embeds: [createEmbed(guild, `${E.onay} Başarılı`, 'Ceza log sistemi kapatıldı ve kanal kaldırıldı.', 0x2ECC71)], flags: MessageFlags.Ephemeral });
+            }
+        }
 
   if (commandName === 'sohbet') {
             try {
@@ -1482,7 +1536,7 @@ client.on('interactionCreate', async interaction => {
             if (targetMember.kickable) {
                 await targetMember.kick(reason);
                 interaction.reply({ embeds: [createEmbed(guild, 'Uzaklaştırma (Kick)', `**${target.tag}** sunucudan uzaklaştırılmıştır.\n**Gerekçe:** ${reason}`, 0xE67E22)] });
-                await sendLog(guild, `${E.ev} Kullanıcı Atıldı`, `**Yetkili:** ${member.user.tag}\n**Atılan:** ${target.tag}\n**Sebep:** ${reason}`, 0xE67E22);
+                await sendCezaLog(guild, `${E.ev} Kullanıcı Atıldı`, `**Yetkili:** ${member.user.tag}\n**Atılan:** ${target.tag}\n**Sebep:** ${reason}`, 0xE67E22);
             } else {
                 interaction.reply({ embeds: [createErrorEmbed(guild, '**İşlem Başarısız:** Bu kullanıcının rolü benim rolümden daha yüksek veya eşit olduğu için işlem yapılamıyor.')], flags: MessageFlags.Ephemeral });
             }
@@ -1495,7 +1549,7 @@ client.on('interactionCreate', async interaction => {
             try {
                 await guild.members.ban(target, { reason: reason });
                 interaction.reply({ embeds: [createEmbed(guild, 'Yasaklama (Ban)', `**${target.tag}** sunucudan kalıcı olarak yasaklanmıştır.\n**Gerekçe:** ${reason}`, 0xC0392B)] });
-                await sendLog(guild, `${E.ban} Kullanıcı Yasaklandı`, `**Yetkili:** ${member.user.tag}\n**Yasaklanan:** ${target.tag}\n**Sebep:** ${reason}`, 0xC0392B);
+                await sendCezaLog(guild, `${E.ban} Kullanıcı Yasaklandı`, `**Yetkili:** ${member.user.tag}\n**Yasaklanan:** ${target.tag}\n**Sebep:** ${reason}`, 0xC0392B);
             } catch (e) {
                 interaction.reply({ embeds: [createErrorEmbed(guild, '**İşlem Başarısız:** Kullanıcıyı yasaklamak için yeterli yetkiye sahip değilim.')], flags: MessageFlags.Ephemeral });
             }
@@ -1511,7 +1565,7 @@ client.on('interactionCreate', async interaction => {
             if (targetMember.moderatable) {
                 await targetMember.timeout(duration * 60000, reason);
                 interaction.reply({ embeds: [createEmbed(guild, 'Susturma', `**${target.tag}** kullanıcısına **${duration} dakika** boyunca susturulma uygulanmıştır.`, 0xF1C40F)] });
-                await sendLog(guild, `${E.susturma} Kullanıcı Susturuldu`, `**Yetkili:** ${member.user.tag}\n**Susturulan:** ${target.tag}\n**Süre:** ${duration} Dakika\n**Sebep:** ${reason}`, 0xF1C40F);
+                await sendCezaLog(guild, `${E.susturma} Kullanıcı Susturuldu`, `**Yetkili:** ${member.user.tag}\n**Susturulan:** ${target.tag}\n**Süre:** ${duration} Dakika\n**Sebep:** ${reason}`, 0xF1C40F);
             } else {
                 interaction.reply({ embeds: [createErrorEmbed(guild, '**Hata:** Bu kullanıcı Yönetici yetkisine sahip veya rolü benden yüksek.')], flags: MessageFlags.Ephemeral });
             }
@@ -1524,7 +1578,7 @@ client.on('interactionCreate', async interaction => {
             if (targetMember.moderatable) {
                 await targetMember.timeout(null);
                 interaction.reply({ embeds: [createEmbed(guild, 'Susturma Kaldırıldı', `**${target.tag}** kullanıcısının susturması kaldırılmıştır.`, 0x2ECC71)] });
-                await sendLog(guild, `${E.susturmaacma} Susturma Kaldırıldı`, `**Yetkili:** ${member.user.tag}\n**Kullanıcı:** ${target.tag}`, 0x2ECC71);
+                await sendCezaLog(guild, `${E.susturmaacma} Susturma Kaldırıldı`, `**Yetkili:** ${member.user.tag}\n**Kullanıcı:** ${target.tag}`, 0x2ECC71);
             } else {
                 interaction.reply({ embeds: [createErrorEmbed(guild, '**Hata:** İşlem gerçekleştirilemedi. Yetkilerimi kontrol ediniz.')], flags: MessageFlags.Ephemeral });
             }
@@ -1663,7 +1717,7 @@ client.on('interactionCreate', async interaction => {
             if (value === 'help_genel') {
                 newEmbed = createEmbed(interaction.guild, `${E.kesif} Genel Komutlar`, '`/yardım` - Botun komut listesini gösterir.\n`/öneri` - Yönetim ekibine bir öneri gönderin.\n`/ping` - Botun gecikme süresini gösterir.\n`/sunucu-bilgi` - Sunucu hakkındaki detaylı bilgileri gösterir.\n`/kullanıcı-bilgi` - Belirtilen kullanıcı hakkında bilgi verir.\n`/medya` - TikTok videosunu oynatır.\n`/sohbet` - Makima ile sohbet et.', 0x5865F2);
             } else if (value === 'help_admin') {
-                newEmbed = createEmbed(interaction.guild, `${E.admin} Yönetici Komutları`, '`/log kanal-ayarla` - Log kanalını seçer.\n`/log kaldır` - Log sistemini kapatır.\n`/karşılama kanal-ayarla` - Karşılama kanalını ayarlar.\n`/karşılama kaldır` - Karşılama sistemini kapatır.\n`/ses bağla` - Botu istenen sese sabitler.\n`/çekiliş` - Sunucuda yeni bir çekiliş başlatır.\n`/yeniden-çek` - Sona ermiş bir çekiliş için yeni kazanan belirler.\n`/mod-form` - Moderatör başvuru formunu kanala gönderir.\n`/ses-panel` - Ses yönetim panelini aktif eder.\n`/bilet oluştur` - Bilet sistemini sunucuya kurar.\n`/link-engel` - Sunucu içi link paylaşım korumasını yönetir.\n`/kick` - Kullanıcıyı sunucudan uzaklaştırır.\n`/ban` - Kullanıcıyı yasaklar.\n`/mute` - Kullanıcıya süreli kısıtlama uygular.\n`/unmute` - Kullanıcının kısıtlamasını kaldırır.\n`/sil` - Belirtilen miktarda mesajı kanaldan temizler.\n`/rol ayarla` - Sunucuya katılanlara verilecek otomatik rolü ayarlar.\n`/özel mesaj-ayarla` - Özel yanıt ayarlar.\n`/özel mesaj-sil` - Özel mesajı siler.\n`/hatırlatma ayarla` - Hatırlatma mesajı ayarlar.\n`/hatırlatma sil` - Hatırlatmaları siler.\n`/kanal-kilit aç` - Kanalın kilidini açar.\n`/kanal-kilit kapa` - Kanalı kilitler.', 0x5865F2);
+                newEmbed = createEmbed(interaction.guild, `${E.admin} Yönetici Komutları`, '`/log kanal-ayarla` - Log kanalını seçer.\n`/log kaldır` - Log sistemini kapatır.\n`/ceza-logs ayarla` - Ceza kanalını seçer.\n`/ceza-logs kaldır` - Ceza kanalını kapatır.\n`/karşılama kanal-ayarla` - Karşılama kanalını ayarlar.\n`/karşılama kaldır` - Karşılama sistemini kapatır.\n`/ses bağla` - Botu istenen sese sabitler.\n`/çekiliş` - Sunucuda yeni bir çekiliş başlatır.\n`/yeniden-çek` - Sona ermiş bir çekiliş için yeni kazanan belirler.\n`/mod-form` - Moderatör başvuru formunu kanala gönderir.\n`/ses-panel` - Ses yönetim panelini aktif eder.\n`/bilet oluştur` - Bilet sistemini sunucuya kurar.\n`/link-engel` - Sunucu içi link paylaşım korumasını yönetir.\n`/kick` - Kullanıcıyı sunucudan uzaklaştırır.\n`/ban` - Kullanıcıyı yasaklar.\n`/mute` - Kullanıcıya süreli kısıtlama uygular.\n`/unmute` - Kullanıcının kısıtlamasını kaldırır.\n`/sil` - Belirtilen miktarda mesajı kanaldan temizler.\n`/rol ayarla` - Sunucuya katılanlara verilecek otomatik rolü ayarlar.\n`/özel mesaj-ayarla` - Özel yanıt ayarlar.\n`/özel mesaj-sil` - Özel mesajı siler.\n`/hatırlatma ayarla` - Hatırlatma mesajı ayarlar.\n`/hatırlatma sil` - Hatırlatmaları siler.\n`/kanal-kilit aç` - Kanalın kilidini açar.\n`/kanal-kilit kapa` - Kanalı kilitler.', 0x5865F2);
             } else if (value === 'help_booster') {
                 newEmbed = createEmbed(interaction.guild, `${E.yildiz} Takviyeci Komutları`, '`/özel rol-ayarla` - Özel rol oluşturur.\n`/özel rol-sil` - Özel rolü siler.', 0x5865F2);
             } else if (value === 'help_systems') {
