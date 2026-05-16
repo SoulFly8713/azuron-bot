@@ -456,6 +456,7 @@ client.on('clientReady', async () => {
                     }
                 }
             }
+        }
         });
     }, 60000);
 
@@ -735,8 +736,11 @@ client.on('guildMemberAdd', async member => {
     if (chatWelcomeChannelId) {
         const chatChannel = member.guild.channels.cache.get(chatWelcomeChannelId);
         if (chatChannel) {
-            const chatWelcomeMsg = `Merhaba ${member} aramıza hoş geldin!\n\nBurada yeni insanlarla tanışabilir, mükemmel arkadaşlıklar kurabilirsiniz.\n\n⋆˚｡ <#1470356749847363745> Kanalını okumayı unutma.\n⋆˚｡ <#1453838829025759364> Kanalından duyuruları takip edebilirsin.\n\nhttps://tenor.com/view/power-chainsaw-man-chain-saw-chain-saw-man-gif-10320499736909693459`;
-            chatChannel.send(chatWelcomeMsg).catch(()=>{});
+            const chatEmbed = new EmbedBuilder()
+                .setColor(0x2B2D31)
+                .setDescription(`Merhaba, ${member} aramıza hoş geldin!\n\nSeni aramızda görmek harika! Burada keyifli sohbetlere katılabilir ve kalıcı dostluklar kurabilirsin.\n\n⋆˚｡ <#1470356749847363745> Kanalını okumayı unutma.\n⋆˚｡ <#1453838829025759364> Kanalından duyuruları takip edebilirsin.`)
+                .setImage('https://media1.tenor.com/m/x-E9vB6v3b0AAAAd/makima-chainsaw-man.gif');
+            chatChannel.send({ embeds: [chatEmbed] }).catch(()=>{});
         }
     }
 
