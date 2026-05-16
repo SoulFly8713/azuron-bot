@@ -110,7 +110,8 @@ const GuildSettings = sequelize.define('GuildSettings', {
     cezaLogChannel: { type: DataTypes.STRING, allowNull: true },
     welcomeChannel: { type: DataTypes.STRING, allowNull: true },
     botVoiceChannel: { type: DataTypes.STRING, allowNull: true },
-    ticketStaffRole: { type: DataTypes.STRING, allowNull: true }
+    ticketStaffRole: { type: DataTypes.STRING, allowNull: true },
+    chatWelcomeChannel: { type: DataTypes.STRING, allowNull: true }
 });
 
 const CustomRole = sequelize.define('CustomRole', {
@@ -181,6 +182,7 @@ const cezaLogChannels = new Map();
 const welcomeChannels = new Map();
 const botVoiceChannels = new Map();
 const ticketStaffRoles = new Map();
+const chatWelcomeChannels = new Map();
 const customRoleSetup = new Map();
 const userCustomRoles = new Map();
 const activeGiveaways = new Map();
@@ -383,6 +385,7 @@ client.on('clientReady', async () => {
                 if (s.welcomeChannel) welcomeChannels.set(s.guildId, s.welcomeChannel);
                 if (s.botVoiceChannel) botVoiceChannels.set(s.guildId, s.botVoiceChannel);
                 if (s.ticketStaffRole) ticketStaffRoles.set(s.guildId, s.ticketStaffRole);
+                if (s.chatWelcomeChannel) chatWelcomeChannels.set(s.guildId, s.chatWelcomeChannel);
             });
 
             const roles = await CustomRole.findAll();
@@ -524,6 +527,19 @@ client.on('clientReady', async () => {
             .addSubcommand(s => s
                 .setName('kaldır')
                 .setDescription('Karşılama mesajı sistemini kapatır.')
+            ),
+        new SlashCommandBuilder()
+            .setName('sohbet-karşılama')
+            .setDescription('Sohbet kanalı için özel etiketli ve GIF\'li karşılama mesajı ayarları')
+            .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
+            .addSubcommand(s => s
+                .setName('ayarla')
+                .setDescription('Sohbete düşecek hoş geldin mesajı için kanal belirler.')
+                .addChannelOption(o => o.setName('kanal').setDescription('Kanal seçin').setRequired(true))
+            )
+            .addSubcommand(s => s
+                .setName('kaldır')
+                .setDescription('Sohbet karşılama sistemini kapatır.')
             ),
         new SlashCommandBuilder()
             .setName('çekiliş')
@@ -712,6 +728,15 @@ client.on('guildMemberAdd', async member => {
         const channel = member.guild.channels.cache.get(welcomeChannelId);
         if (channel) {
             channel.send(`${member} Hoş geldin! Seninle birlikte **${member.guild.memberCount}** kişiyiz!`);
+        }
+    }
+
+    const chatWelcomeChannelId = chatWelcomeChannels.get(member.guild.id);
+    if (chatWelcomeChannelId) {
+        const chatChannel = member.guild.channels.cache.get(chatWelcomeChannelId);
+        if (chatChannel) {
+            const chatWelcomeMsg = `Merhaba ${member} aramıza hoş geldin!\n\nBurada yeni insanlarla tanışabilir, mükemmel arkadaşlıklar kurabilirsiniz.\n\n⋆˚｡ <#1470356749847363745> Kanalını okumayı unutma.\n⋆˚｡ <#1453838829025759364> Kanalından duyuruları takip edebilirsin.\n\nhttps://tenor.com/view/power-chainsaw-man-chain-saw-chain-saw-man-gif-10320499736909693459`;
+            chatChannel.send(chatWelcomeMsg).catch(()=>{});
         }
     }
 
@@ -1153,6 +1178,20 @@ client.on('interactionCreate', async interaction => {
                 welcomeChannels.delete(guild.id);
                 await GuildSettings.update({ welcomeChannel: null }, { where: { guildId: guild.id } });
                 return interaction.reply({ embeds: [createEmbed(guild, `${E.onay} Başarılı`, 'Karşılama mesajı sistemi kapatıldı ve kanal kaldırıldı.', 0x2ECC71)], flags: MessageFlags.Ephemeral });
+            }
+        }
+
+        if (commandName === 'sohbet-karşılama') {
+            const sub = options.getSubcommand();
+            if (sub === 'ayarla') {
+                const targetChannel = options.getChannel('kanal');
+                chatWelcomeChannels.set(guild.id, targetChannel.id);
+                await GuildSettings.upsert({ guildId: guild.id, chatWelcomeChannel: targetChannel.id });
+                return interaction.reply({ embeds: [createEmbed(guild, `${E.onay} Başarılı`, `Sohbet karşılama kanalı başarıyla ${targetChannel} olarak ayarlandı.`, 0x2ECC71)], flags: MessageFlags.Ephemeral });
+            } else if (sub === 'kaldır') {
+                chatWelcomeChannels.delete(guild.id);
+                await GuildSettings.update({ chatWelcomeChannel: null }, { where: { guildId: guild.id } });
+                return interaction.reply({ embeds: [createEmbed(guild, `${E.onay} Başarılı`, 'Sohbet karşılama sistemi kapatıldı ve kanal kaldırıldı.', 0x2ECC71)], flags: MessageFlags.Ephemeral });
             }
         }
 
@@ -1717,7 +1756,7 @@ client.on('interactionCreate', async interaction => {
             if (value === 'help_genel') {
                 newEmbed = createEmbed(interaction.guild, `${E.kesif} Genel Komutlar`, '`/yardım` - Botun komut listesini gösterir.\n`/öneri` - Yönetim ekibine bir öneri gönderin.\n`/ping` - Botun gecikme süresini gösterir.\n`/sunucu-bilgi` - Sunucu hakkındaki detaylı bilgileri gösterir.\n`/kullanıcı-bilgi` - Belirtilen kullanıcı hakkında bilgi verir.\n`/medya` - TikTok videosunu oynatır.\n`/sohbet` - Makima ile sohbet et.', 0x5865F2);
             } else if (value === 'help_admin') {
-                newEmbed = createEmbed(interaction.guild, `${E.admin} Yönetici Komutları`, '`/log kanal-ayarla` - Log kanalını seçer.\n`/log kaldır` - Log sistemini kapatır.\n`/ceza-logs ayarla` - Ceza kanalını seçer.\n`/ceza-logs kaldır` - Ceza kanalını kapatır.\n`/karşılama kanal-ayarla` - Karşılama kanalını ayarlar.\n`/karşılama kaldır` - Karşılama sistemini kapatır.\n`/ses bağla` - Botu istenen sese sabitler.\n`/çekiliş` - Sunucuda yeni bir çekiliş başlatır.\n`/yeniden-çek` - Sona ermiş bir çekiliş için yeni kazanan belirler.\n`/mod-form` - Moderatör başvuru formunu kanala gönderir.\n`/ses-panel` - Ses yönetim panelini aktif eder.\n`/bilet oluştur` - Bilet sistemini sunucuya kurar.\n`/link-engel` - Sunucu içi link paylaşım korumasını yönetir.\n`/kick` - Kullanıcıyı sunucudan uzaklaştırır.\n`/ban` - Kullanıcıyı yasaklar.\n`/mute` - Kullanıcıya süreli kısıtlama uygular.\n`/unmute` - Kullanıcının kısıtlamasını kaldırır.\n`/sil` - Belirtilen miktarda mesajı kanaldan temizler.\n`/rol ayarla` - Sunucuya katılanlara verilecek otomatik rolü ayarlar.\n`/özel mesaj-ayarla` - Özel yanıt ayarlar.\n`/özel mesaj-sil` - Özel mesajı siler.\n`/hatırlatma ayarla` - Hatırlatma mesajı ayarlar.\n`/hatırlatma sil` - Hatırlatmaları siler.\n`/kanal-kilit aç` - Kanalın kilidini açar.\n`/kanal-kilit kapa` - Kanalı kilitler.', 0x5865F2);
+                newEmbed = createEmbed(interaction.guild, `${E.admin} Yönetici Komutları`, '`/log kanal-ayarla` - Log kanalını seçer.\n`/log kaldır` - Log sistemini kapatır.\n`/ceza-logs ayarla` - Ceza kanalını seçer.\n`/ceza-logs kaldır` - Ceza kanalını kapatır.\n`/karşılama kanal-ayarla` - Karşılama kanalını ayarlar.\n`/karşılama kaldır` - Karşılama sistemini kapatır.\n`/sohbet-karşılama ayarla` - Sohbet kanalına özel hoşgeldin mesajını açar.\n`/ses bağla` - Botu istenen sese sabitler.\n`/çekiliş` - Sunucuda yeni bir çekiliş başlatır.\n`/yeniden-çek` - Sona ermiş bir çekiliş için yeni kazanan belirler.\n`/mod-form` - Moderatör başvuru formunu kanala gönderir.\n`/ses-panel` - Ses yönetim panelini aktif eder.\n`/bilet oluştur` - Bilet sistemini sunucuya kurar.\n`/link-engel` - Sunucu içi link paylaşım korumasını yönetir.\n`/kick` - Kullanıcıyı sunucudan uzaklaştırır.\n`/ban` - Kullanıcıyı yasaklar.\n`/mute` - Kullanıcıya süreli kısıtlama uygular.\n`/unmute` - Kullanıcının kısıtlamasını kaldırır.\n`/sil` - Belirtilen miktarda mesajı kanaldan temizler.\n`/rol ayarla` - Sunucuya katılanlara verilecek otomatik rolü ayarlar.\n`/özel mesaj-ayarla` - Özel yanıt ayarlar.\n`/özel mesaj-sil` - Özel mesajı siler.\n`/hatırlatma ayarla` - Hatırlatma mesajı ayarlar.\n`/hatırlatma sil` - Hatırlatmaları siler.\n`/kanal-kilit aç` - Kanalın kilidini açar.\n`/kanal-kilit kapa` - Kanalı kilitler.', 0x5865F2);
             } else if (value === 'help_booster') {
                 newEmbed = createEmbed(interaction.guild, `${E.yildiz} Takviyeci Komutları`, '`/özel rol-ayarla` - Özel rol oluşturur.\n`/özel rol-sil` - Özel rolü siler.', 0x5865F2);
             } else if (value === 'help_systems') {
