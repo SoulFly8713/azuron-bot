@@ -456,7 +456,6 @@ client.on('clientReady', async () => {
                     }
                 }
             }
-        }
         });
     }, 60000);
 
