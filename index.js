@@ -111,7 +111,10 @@ const GuildSettings = sequelize.define('GuildSettings', {
     welcomeChannel: { type: DataTypes.STRING, allowNull: true },
     botVoiceChannel: { type: DataTypes.STRING, allowNull: true },
     ticketStaffRole: { type: DataTypes.STRING, allowNull: true },
-    chatWelcomeChannel: { type: DataTypes.STRING, allowNull: true }
+    chatWelcomeChannel: { type: DataTypes.STRING, allowNull: true },
+    leaveLogChannel: { type: DataTypes.STRING, allowNull: true },
+    levelUpChannel: { type: DataTypes.STRING, allowNull: true },
+    levelXpChannel: { type: DataTypes.STRING, allowNull: true }
 });
 
 const CustomRole = sequelize.define('CustomRole', {
@@ -153,6 +156,13 @@ const AutoMessage = sequelize.define('AutoMessage', {
     lastSentAt: { type: DataTypes.BIGINT, defaultValue: 0 }
 });
 
+const UserLevel = sequelize.define('UserLevel', {
+    userId: { type: DataTypes.STRING, primaryKey: true },
+    guildId: { type: DataTypes.STRING, primaryKey: true },
+    xp: { type: DataTypes.INTEGER, defaultValue: 0 },
+    level: { type: DataTypes.INTEGER, defaultValue: 1 }
+});
+
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -183,6 +193,9 @@ const welcomeChannels = new Map();
 const botVoiceChannels = new Map();
 const ticketStaffRoles = new Map();
 const chatWelcomeChannels = new Map();
+const leaveLogChannels = new Map();
+const levelUpChannels = new Map();
+const levelXpChannels = new Map();
 const customRoleSetup = new Map();
 const userCustomRoles = new Map();
 const activeGiveaways = new Map();
@@ -190,6 +203,15 @@ const customUserMessages = new Map();
 const guildInvites = new Map();
 const userInvites = new Map();
 const tempVoiceChannels = new Set();
+
+const levelReqs = [0, 0];
+let currentDiff = 0;
+for (let i = 1; i <= 30; i++) {
+    if (i < 10) currentDiff += 100;
+    else if (i < 20) currentDiff += 200;
+    else currentDiff += 250;
+    levelReqs.push(levelReqs[i] + currentDiff);
+}
 
 function createEmbed(guild, title, description, color = 0x5865F2) {
     const embed = new EmbedBuilder()
@@ -386,6 +408,9 @@ client.on('clientReady', async () => {
                 if (s.botVoiceChannel) botVoiceChannels.set(s.guildId, s.botVoiceChannel);
                 if (s.ticketStaffRole) ticketStaffRoles.set(s.guildId, s.ticketStaffRole);
                 if (s.chatWelcomeChannel) chatWelcomeChannels.set(s.guildId, s.chatWelcomeChannel);
+                if (s.leaveLogChannel) leaveLogChannels.set(s.guildId, s.leaveLogChannel);
+                if (s.levelUpChannel) levelUpChannels.set(s.guildId, s.levelUpChannel);
+                if (s.levelXpChannel) levelXpChannels.set(s.guildId, s.levelXpChannel);
             });
 
             const roles = await CustomRole.findAll();
@@ -493,6 +518,39 @@ client.on('clientReady', async () => {
                 .setName('kaldır')
                 .setDescription('Sunucu log sistemini kapatır.')
             ),
+        new SlashCommandBuilder()
+            .setName('leave-logs')
+            .setDescription('Çıkış log kanalı ayarları')
+            .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
+            .addSubcommand(s => s
+                .setName('ekle')
+                .setDescription('Sunucudan çıkanların loglanacağı kanalı belirler.')
+                .addChannelOption(o => o.setName('kanal').setDescription('Kanal seçin').setRequired(true))
+            )
+            .addSubcommand(s => s
+                .setName('kaldır')
+                .setDescription('Çıkış log sistemini kapatır.')
+            ),
+        new SlashCommandBuilder()
+            .setName('level-sistem')
+            .setDescription('Level sistemi ayarları')
+            .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
+            .addSubcommand(s => s
+                .setName('kur')
+                .setDescription('Level atlama ve XP sayılacak kanalı ayarlar.')
+                .addChannelOption(o => o.setName('kanal').setDescription('Level atlama mesajı kanalı').setRequired(true))
+                .addChannelOption(o => o.setName('sayılacak_kanal').setDescription('Sadece bu kanalda XP kazanılır').setRequired(true))
+            )
+            .addSubcommand(s => s
+                .setName('kaldır')
+                .setDescription('Level sistemini kapatır.')
+            ),
+        new SlashCommandBuilder()
+            .setName('level')
+            .setDescription('Mevcut levelinizi ve XP durumunuzu gösterir'),
+        new SlashCommandBuilder()
+            .setName('level-listele')
+            .setDescription('Sunucudaki level sıralamasını gösterir'),
         new SlashCommandBuilder()
             .setName('ceza-logs')
             .setDescription('Ceza log kanalı ayarları')
@@ -737,9 +795,9 @@ client.on('guildMemberAdd', async member => {
         if (chatChannel) {
             const chatEmbed = new EmbedBuilder()
                 .setColor(0x2B2D31)
-                .setDescription(`Merhaba, ${member} aramıza hoş geldin!\n\nSeni aramızda görmek harika! Burada keyifli sohbetlere katılabilir ve kalıcı dostluklar kurabilirsin.\n\n⋆˚｡ <#1470356749847363745> Kanalını okumayı unutma.\n⋆˚｡ <#1453838829025759364> Kanalından duyuruları takip edebilirsin.`)
-                .setImage('https://media1.tenor.com/m/x-E9vB6v3b0AAAAd/makima-chainsaw-man.gif');
-            chatChannel.send({ embeds: [chatEmbed] }).catch(()=>{});
+                .setDescription(`Seni aramızda görmek harika! Burada keyifli sohbetlere katılabilir ve kalıcı dostluklar kurabilirsin.\n\n⋆˚｡ <#1470356749847363745> Kanalını okumayı unutma.\n⋆˚｡ <#1453838829025759364> Kanalından duyuruları takip edebilirsin.`)
+                .setImage('https://tenor.com/view/power-chainsaw-man-chain-saw-chain-saw-man-gif-10320499736909693459');
+            chatChannel.send({ content: `Merhaba, ${member}`, embeds: [chatEmbed] }).catch(()=>{});
         }
     }
 
@@ -792,7 +850,7 @@ client.on('guildMemberRemove', async member => {
             await sendCezaLog(member.guild, `${E.ev} Kullanıcı Atıldı`, `**Kullanıcı:** ${member.user.tag}\n**Yetkili:** ${kickLog.executor.tag}\n**Sebep:** ${kickLog.reason || 'Belirtilmedi'}`, 0xE67E22);
         }
     } else {
-        const leaveLogId = logChannels.get(member.guild.id);
+        const leaveLogId = leaveLogChannels.get(member.guild.id);
         if (leaveLogId) {
             const leaveChannel = member.guild.channels.cache.get(leaveLogId);
             if (leaveChannel) {
@@ -855,6 +913,53 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
 
 client.on('messageCreate', async message => {
     if (message.author.bot || !message.guild) return;
+
+    if (levelXpChannels.get(message.guild.id) === message.channel.id) {
+        const addedXp = message.content.trim().split(/\s+/).length;
+        if (addedXp > 0) {
+            try {
+                let [dbUser] = await UserLevel.findOrCreate({
+                    where: { userId: message.author.id, guildId: message.guild.id },
+                    defaults: { xp: 0, level: 1 }
+                });
+
+                let currentLevel = dbUser.level;
+                let newXp = dbUser.xp + addedXp;
+                let leveledUp = false;
+
+                while (currentLevel < 30 && newXp >= levelReqs[currentLevel + 1]) {
+                    currentLevel++;
+                    leveledUp = true;
+                }
+
+                dbUser.xp = newXp;
+
+                if (leveledUp) {
+                    dbUser.level = currentLevel;
+                    const levelChannelId = levelUpChannels.get(message.guild.id);
+                    if (levelChannelId) {
+                        const lCh = message.guild.channels.cache.get(levelChannelId);
+                        if (lCh) lCh.send(`🌟Tebrikler, ${message.author}! ${currentLevel}. seviyeye yükseldin, böyle devam et.`).catch(()=>{});
+                    }
+
+                    const roles = {
+                        5: '1505650955021062234',
+                        10: '1505650997706358956',
+                        15: '1505651068850143422',
+                        20: '1505651182071451778',
+                        25: '1505651263570968646'
+                    };
+
+                    if (roles[currentLevel]) {
+                        const roleToAdd = message.guild.roles.cache.get(roles[currentLevel]);
+                        if (roleToAdd) message.member.roles.add(roleToAdd).catch(()=>{});
+                    }
+                }
+                
+                await dbUser.save();
+            } catch (err) {}
+        }
+    }
 
     if (message.mentions.has(client.user.id) && customUserMessages.has(message.author.id)) {
         return message.reply(customUserMessages.get(message.author.id));
@@ -1071,6 +1176,62 @@ client.on('interactionCreate', async interaction => {
                 await GuildSettings.update({ cezaLogChannel: null }, { where: { guildId: guild.id } });
                 return interaction.reply({ embeds: [createEmbed(guild, `${E.onay} Başarılı`, 'Ceza log sistemi kapatıldı ve kanal kaldırıldı.', 0x2ECC71)], flags: MessageFlags.Ephemeral });
             }
+        }
+
+        if (commandName === 'leave-logs') {
+            const sub = options.getSubcommand();
+            if (sub === 'ekle') {
+                const targetChannel = options.getChannel('kanal');
+                leaveLogChannels.set(guild.id, targetChannel.id);
+                await GuildSettings.upsert({ guildId: guild.id, leaveLogChannel: targetChannel.id });
+                return interaction.reply({ embeds: [createEmbed(guild, `${E.onay} Başarılı`, `Çıkış log kanalı başarıyla ${targetChannel} olarak ayarlandı.`, 0x2ECC71)], flags: MessageFlags.Ephemeral });
+            } else if (sub === 'kaldır') {
+                leaveLogChannels.delete(guild.id);
+                await GuildSettings.update({ leaveLogChannel: null }, { where: { guildId: guild.id } });
+                return interaction.reply({ embeds: [createEmbed(guild, `${E.onay} Başarılı`, 'Çıkış log sistemi kapatıldı ve kanal kaldırıldı.', 0x2ECC71)], flags: MessageFlags.Ephemeral });
+            }
+        }
+
+        if (commandName === 'level-sistem') {
+            const sub = options.getSubcommand();
+            if (sub === 'kur') {
+                const targetChannel = options.getChannel('kanal');
+                const xpChannel = options.getChannel('sayılacak_kanal');
+                levelUpChannels.set(guild.id, targetChannel.id);
+                levelXpChannels.set(guild.id, xpChannel.id);
+                await GuildSettings.upsert({ guildId: guild.id, levelUpChannel: targetChannel.id, levelXpChannel: xpChannel.id });
+                return interaction.reply({ embeds: [createEmbed(guild, `${E.onay} Başarılı`, `Level atlama mesajları ${targetChannel} kanalına gönderilecek.\nSadece ${xpChannel} kanalındaki mesajlar XP kazandıracak.`, 0x2ECC71)], flags: MessageFlags.Ephemeral });
+            } else if (sub === 'kaldır') {
+                levelUpChannels.delete(guild.id);
+                levelXpChannels.delete(guild.id);
+                await GuildSettings.update({ levelUpChannel: null, levelXpChannel: null }, { where: { guildId: guild.id } });
+                return interaction.reply({ embeds: [createEmbed(guild, `${E.onay} Başarılı`, 'Level sistemi kapatıldı.', 0x2ECC71)], flags: MessageFlags.Ephemeral });
+            }
+        }
+
+        if (commandName === 'level') {
+            let dbUser = await UserLevel.findOne({ where: { userId: interaction.user.id, guildId: interaction.guild.id } });
+            if (!dbUser) {
+                return interaction.reply({ embeds: [createEmbed(guild, 'Level Bilgisi', `Henüz XP kazanmadınız.\n\n**Mevcut Level:** 1\n**Mevcut XP:** 0 / ${levelReqs[2]}`, 0x5865F2)] });
+            }
+            const nextReq = levelReqs[dbUser.level + 1] || 'Maksimum Level';
+            return interaction.reply({ embeds: [createEmbed(guild, 'Level Bilgisi', `**Mevcut Level:** ${dbUser.level}\n**Mevcut XP:** ${dbUser.xp} / ${nextReq}`, 0x5865F2)] });
+        }
+
+        if (commandName === 'level-listele') {
+            const topUsers = await UserLevel.findAll({
+                where: { guildId: guild.id },
+                order: [['xp', 'DESC']],
+                limit: 10
+            });
+            if (topUsers.length === 0) {
+                return interaction.reply({ embeds: [createEmbed(guild, 'Level Sıralaması', 'Sunucuda henüz level sıralaması bulunmuyor.', 0x5865F2)] });
+            }
+            let desc = '';
+            topUsers.forEach((u, i) => {
+                desc += `**${i + 1}.** <@${u.userId}> - Level: **${u.level}** (XP: ${u.xp})\n`;
+            });
+            return interaction.reply({ embeds: [createEmbed(guild, 'Level Sıralaması (İlk 10)', desc, 0x5865F2)] });
         }
 
   if (commandName === 'sohbet') {
@@ -1757,9 +1918,9 @@ client.on('interactionCreate', async interaction => {
             let newEmbed;
             
             if (value === 'help_genel') {
-                newEmbed = createEmbed(interaction.guild, `${E.kesif} Genel Komutlar`, '`/yardım` - Botun komut listesini gösterir.\n`/öneri` - Yönetim ekibine bir öneri gönderin.\n`/ping` - Botun gecikme süresini gösterir.\n`/sunucu-bilgi` - Sunucu hakkındaki detaylı bilgileri gösterir.\n`/kullanıcı-bilgi` - Belirtilen kullanıcı hakkında bilgi verir.\n`/medya` - TikTok videosunu oynatır.\n`/sohbet` - Makima ile sohbet et.', 0x5865F2);
+                newEmbed = createEmbed(interaction.guild, `${E.kesif} Genel Komutlar`, '`/yardım` - Botun komut listesini gösterir.\n`/öneri` - Yönetim ekibine bir öneri gönderin.\n`/ping` - Botun gecikme süresini gösterir.\n`/sunucu-bilgi` - Sunucu hakkındaki detaylı bilgileri gösterir.\n`/kullanıcı-bilgi` - Belirtilen kullanıcı hakkında bilgi verir.\n`/medya` - TikTok videosunu oynatır.\n`/sohbet` - Makima ile sohbet et.\n`/level` - Level ve XP bilgilerini gösterir.\n`/level-listele` - Sunucunun XP liderlik tablosunu gösterir.', 0x5865F2);
             } else if (value === 'help_admin') {
-                newEmbed = createEmbed(interaction.guild, `${E.admin} Yönetici Komutları`, '`/log kanal-ayarla` - Log kanalını seçer.\n`/log kaldır` - Log sistemini kapatır.\n`/ceza-logs ayarla` - Ceza kanalını seçer.\n`/ceza-logs kaldır` - Ceza kanalını kapatır.\n`/karşılama kanal-ayarla` - Karşılama kanalını ayarlar.\n`/karşılama kaldır` - Karşılama sistemini kapatır.\n`/sohbet-karşılama ayarla` - Sohbet kanalına özel hoşgeldin mesajını açar.\n`/ses bağla` - Botu istenen sese sabitler.\n`/çekiliş` - Sunucuda yeni bir çekiliş başlatır.\n`/yeniden-çek` - Sona ermiş bir çekiliş için yeni kazanan belirler.\n`/mod-form` - Moderatör başvuru formunu kanala gönderir.\n`/ses-panel` - Ses yönetim panelini aktif eder.\n`/bilet oluştur` - Bilet sistemini sunucuya kurar.\n`/link-engel` - Sunucu içi link paylaşım korumasını yönetir.\n`/kick` - Kullanıcıyı sunucudan uzaklaştırır.\n`/ban` - Kullanıcıyı yasaklar.\n`/mute` - Kullanıcıya süreli kısıtlama uygular.\n`/unmute` - Kullanıcının kısıtlamasını kaldırır.\n`/sil` - Belirtilen miktarda mesajı kanaldan temizler.\n`/rol ayarla` - Sunucuya katılanlara verilecek otomatik rolü ayarlar.\n`/özel mesaj-ayarla` - Özel yanıt ayarlar.\n`/özel mesaj-sil` - Özel mesajı siler.\n`/hatırlatma ayarla` - Hatırlatma mesajı ayarlar.\n`/hatırlatma sil` - Hatırlatmaları siler.\n`/kanal-kilit aç` - Kanalın kilidini açar.\n`/kanal-kilit kapa` - Kanalı kilitler.', 0x5865F2);
+                newEmbed = createEmbed(interaction.guild, `${E.admin} Yönetici Komutları`, '`/log kanal-ayarla` - Log kanalını seçer.\n`/log kaldır` - Log sistemini kapatır.\n`/leave-logs ekle` - Çıkış log kanalını ayarlar.\n`/leave-logs kaldır` - Çıkış loglarını kapatır.\n`/level-sistem kur` - Level sistemini kurar.\n`/level-sistem kaldır` - Level sistemini kapatır.\n`/ceza-logs ayarla` - Ceza kanalını seçer.\n`/ceza-logs kaldır` - Ceza kanalını kapatır.\n`/karşılama kanal-ayarla` - Karşılama kanalını ayarlar.\n`/karşılama kaldır` - Karşılama sistemini kapatır.\n`/sohbet-karşılama ayarla` - Sohbet kanalına özel hoşgeldin mesajını açar.\n`/ses bağla` - Botu istenen sese sabitler.\n`/çekiliş` - Sunucuda yeni bir çekiliş başlatır.\n`/yeniden-çek` - Sona ermiş bir çekiliş için yeni kazanan belirler.\n`/mod-form` - Moderatör başvuru formunu kanala gönderir.\n`/ses-panel` - Ses yönetim panelini aktif eder.\n`/bilet oluştur` - Bilet sistemini sunucuya kurar.\n`/link-engel` - Sunucu içi link paylaşım korumasını yönetir.\n`/kick` - Kullanıcıyı sunucudan uzaklaştırır.\n`/ban` - Kullanıcıyı yasaklar.\n`/mute` - Kullanıcıya süreli kısıtlama uygular.\n`/unmute` - Kullanıcının kısıtlamasını kaldırır.\n`/sil` - Belirtilen miktarda mesajı kanaldan temizler.\n`/rol ayarla` - Sunucuya katılanlara verilecek otomatik rolü ayarlar.\n`/özel mesaj-ayarla` - Özel yanıt ayarlar.\n`/özel mesaj-sil` - Özel mesajı siler.\n`/hatırlatma ayarla` - Hatırlatma mesajı ayarlar.\n`/hatırlatma sil` - Hatırlatmaları siler.\n`/kanal-kilit aç` - Kanalın kilidini açar.\n`/kanal-kilit kapa` - Kanalı kilitler.', 0x5865F2);
             } else if (value === 'help_booster') {
                 newEmbed = createEmbed(interaction.guild, `${E.yildiz} Takviyeci Komutları`, '`/özel rol-ayarla` - Özel rol oluşturur.\n`/özel rol-sil` - Özel rolü siler.', 0x5865F2);
             } else if (value === 'help_systems') {
