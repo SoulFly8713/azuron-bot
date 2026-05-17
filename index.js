@@ -1192,7 +1192,7 @@ client.on('interactionCreate', async interaction => {
             }
         }
 
-        if (commandName === 'level-sistem') {
+      if (commandName === 'level-sistem') {
             const sub = options.getSubcommand();
             if (sub === 'kur') {
                 const targetChannel = options.getChannel('kanal');
@@ -1212,10 +1212,16 @@ client.on('interactionCreate', async interaction => {
         if (commandName === 'level') {
             let dbUser = await UserLevel.findOne({ where: { userId: interaction.user.id, guildId: interaction.guild.id } });
             if (!dbUser) {
-                return interaction.reply({ embeds: [createEmbed(guild, 'Level Bilgisi', `Henüz XP kazanmadınız.\n\n**Mevcut Level:** 1\n**Mevcut XP:** 0 / ${levelReqs[2]}`, 0x5865F2)] });
+                return interaction.reply({ 
+                    embeds: [createEmbed(guild, 'Level Bilgisi', `Henüz XP kazanmadınız.\n\n**Mevcut Level:** 1\n**Mevcut XP:** 0 / ${levelReqs[2]}`, 0x5865F2)], 
+                    flags: MessageFlags.Ephemeral 
+                });
             }
             const nextReq = levelReqs[dbUser.level + 1] || 'Maksimum Level';
-            return interaction.reply({ embeds: [createEmbed(guild, 'Level Bilgisi', `**Mevcut Level:** ${dbUser.level}\n**Mevcut XP:** ${dbUser.xp} / ${nextReq}`, 0x5865F2)] });
+            return interaction.reply({ 
+                embeds: [createEmbed(guild, 'Level Bilgisi', `**Mevcut Level:** ${dbUser.level}\n**Mevcut XP:** ${dbUser.xp} / ${nextReq}`, 0x5865F2)], 
+                flags: MessageFlags.Ephemeral 
+            });
         }
 
         if (commandName === 'level-listele') {
