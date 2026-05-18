@@ -796,7 +796,7 @@ client.on('guildMemberAdd', async member => {
             const chatEmbed = new EmbedBuilder()
                 .setColor(0x2B2D31)
                 .setDescription(`Seni aramızda görmek harika! Burada keyifli sohbetlere katılabilir ve kalıcı dostluklar kurabilirsin.\n\n⋆˚｡ <#1470356749847363745> Kanalını okumayı unutma.\n⋆˚｡ <#1453838829025759364> Kanalından duyuruları takip edebilirsin.`)
-                .setImage('https://imgur.com/a/q0MME2w');
+               .setImage('https://i.imgur.com/q0MME2w.gif');
             chatChannel.send({ content: `Merhaba, ${member}`, embeds: [chatEmbed] }).catch(()=>{});
         }
     }
