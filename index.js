@@ -726,7 +726,7 @@ client.on('clientReady', async () => {
         new SlashCommandBuilder()
             .setName('unban')
             .setDescription('Kullanıcının yasaklamasını kaldırır')
-            .addStringOption(o => o.setName('kullanici_id').setDescription('Hedef kullanıcının ID'si').setRequired(true))
+            .addStringOption(o => o.setName('kullanici_id').setDescription('Hedef kullanıcının IDsi').setRequired(true))
             .setDefaultMemberPermissions(PermissionsBitField.Flags.BanMembers),
         new SlashCommandBuilder()
             .setName('mute')
