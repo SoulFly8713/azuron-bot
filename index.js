@@ -41,7 +41,9 @@ const E = {
     yardim: '<:yardim:1491436307371528242>',
     kanalac: '<:kanalac:1491436296445497525>',
     kanalkapa: '<:kanalkapa:1491436292297330698>',
-    admin: '<:admin:1491439896882057226>'
+    admin: '<:admin:1491439896882057226>',
+    sol_ok: '<:sol_ok:1506626890935570553>',
+    sag_ok: '<:sag_ok:1506626893535772752>'
 };
 
 const E_ID = {
@@ -76,7 +78,9 @@ const E_ID = {
     yardim: '1491436307371528242',
     kanalac: '1491436296445497525',
     kanalkapa: '1491436292297330698',
-    admin: '1491439896882057226'
+    admin: '1491439896882057226',
+    sol_ok: '1506626890935570553',
+    sag_ok: '1506626893535772752'
 };
 
 const app = express();
@@ -327,9 +331,9 @@ async function getLevelPageData(guild, page) {
         .setDescription(desc)
         .setColor(0x5865F2);
 
-    const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(`lvl_prev_${page}`).setEmoji(E_ID.tekrar).setStyle(ButtonStyle.Secondary).setDisabled(page === 1),
-        new ButtonBuilder().setCustomId(`lvl_next_${page}`).setEmoji(E_ID.tekrar).setStyle(ButtonStyle.Secondary).setDisabled(page === maxPage)
+   const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`lvl_prev_${page}`).setEmoji(E_ID.sol_ok).setStyle(ButtonStyle.Secondary).setDisabled(page === 1),
+        new ButtonBuilder().setCustomId(`lvl_next_${page}`).setEmoji(E_ID.sag_ok).setStyle(ButtonStyle.Secondary).setDisabled(page === maxPage)
     );
 
     return { embeds: [embed], components: [row] };
@@ -361,9 +365,9 @@ function getParticipantsPageData(gwData, page) {
         .setDescription(desc)
         .setColor(0x2B2D31);
 
-    const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(`gwp_prev_${gwData.messageId}_${page}`).setEmoji(E_ID.tekrar).setStyle(ButtonStyle.Secondary).setDisabled(page === 1),
-        new ButtonBuilder().setCustomId(`gwp_next_${gwData.messageId}_${page}`).setEmoji(E_ID.tekrar).setStyle(ButtonStyle.Secondary).setDisabled(page === maxPage)
+   const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`gwp_prev_${gwData.messageId}_${page}`).setEmoji(E_ID.sol_ok).setStyle(ButtonStyle.Secondary).setDisabled(page === 1),
+        new ButtonBuilder().setCustomId(`gwp_next_${gwData.messageId}_${page}`).setEmoji(E_ID.sag_ok).setStyle(ButtonStyle.Secondary).setDisabled(page === maxPage)
     );
 
     return { embeds: [embed], components: [row] };
