@@ -299,6 +299,42 @@ async function finalizeCustomRoleSetup(guild, member, setupData, iconUrl, replyM
     }
 }
 
+async function getLevelPageData(guild, page) {
+    const topUsers = await UserLevel.findAll({
+        where: { guildId: guild.id },
+        order: [['xp', 'DESC']]
+    });
+    const total = topUsers.length;
+    const perPage = 10;
+    const maxPage = Math.ceil(total / perPage) || 1;
+    page = Math.max(1, Math.min(page, maxPage));
+
+    const start = (page - 1) * perPage;
+    const end = start + perPage;
+    const currentSlice = topUsers.slice(start, end);
+
+    let desc = '';
+    if (total === 0) {
+        desc = 'Sunucuda henüz level sıralaması bulunmuyor.';
+    } else {
+        currentSlice.forEach((u, i) => {
+            desc += `**${start + i + 1}.** <@${u.userId}> - Level: **${u.level}** (XP: ${u.xp})\n`;
+        });
+    }
+
+    const embed = new EmbedBuilder()
+        .setTitle(`Level Sıralaması (Sayfa ${page}/${maxPage})`)
+        .setDescription(desc)
+        .setColor(0x5865F2);
+
+    const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`lvl_prev_${page}`).setEmoji(E_ID.tekrar).setStyle(ButtonStyle.Secondary).setDisabled(page === 1),
+        new ButtonBuilder().setCustomId(`lvl_next_${page}`).setEmoji(E_ID.tekrar).setStyle(ButtonStyle.Secondary).setDisabled(page === maxPage)
+    );
+
+    return { embeds: [embed], components: [row] };
+}
+
 function getParticipantsPageData(gwData, page) {
     const participants = Array.from(gwData.participants);
     const total = participants.length;
@@ -688,6 +724,11 @@ client.on('clientReady', async () => {
             .addStringOption(o => o.setName('sebep').setDescription('Gerekçe'))
             .setDefaultMemberPermissions(PermissionsBitField.Flags.BanMembers),
         new SlashCommandBuilder()
+            .setName('unban')
+            .setDescription('Kullanıcının yasaklamasını kaldırır')
+            .addStringOption(o => o.setName('kullanici_id').setDescription('Hedef kullanıcının ID'si').setRequired(true))
+            .setDefaultMemberPermissions(PermissionsBitField.Flags.BanMembers),
+        new SlashCommandBuilder()
             .setName('mute')
             .setDescription('Kullanıcıya süreli kısıtlama uygular')
             .addUserOption(o => o.setName('kullanici').setDescription('Hedef kullanıcı').setRequired(true))
@@ -1048,7 +1089,7 @@ client.on('messageCreate', async message => {
     }
     
     if (linkProtection.has(message.guild.id)) {
-        if (message.member.permissions.has(PermissionsBitField.Flags.Administrator)) return;
+        if (message.member.permissions.has(PermissionsBitField.Flags.Administrator) || message.member.permissions.has(PermissionsBitField.Flags.ManageMessages)) return;
         
         const discordInviteRegex = /(?:https?:\/\/)?(?:www\.)?(?:discord\.gg\/|discord(?:app)?\.com\/invite\/)([a-zA-Z0-9-]+)/gi;
         
@@ -1225,19 +1266,8 @@ client.on('interactionCreate', async interaction => {
         }
 
         if (commandName === 'level-listele') {
-            const topUsers = await UserLevel.findAll({
-                where: { guildId: guild.id },
-                order: [['xp', 'DESC']],
-                limit: 10
-            });
-            if (topUsers.length === 0) {
-                return interaction.reply({ embeds: [createEmbed(guild, 'Level Sıralaması', 'Sunucuda henüz level sıralaması bulunmuyor.', 0x5865F2)] });
-            }
-            let desc = '';
-            topUsers.forEach((u, i) => {
-                desc += `**${i + 1}.** <@${u.userId}> - Level: **${u.level}** (XP: ${u.xp})\n`;
-            });
-            return interaction.reply({ embeds: [createEmbed(guild, 'Level Sıralaması (İlk 10)', desc, 0x5865F2)] });
+            const pageData = await getLevelPageData(guild, 1);
+            return interaction.reply({ embeds: pageData.embeds, components: pageData.components });
         }
 
   if (commandName === 'sohbet') {
@@ -1744,7 +1774,7 @@ client.on('interactionCreate', async interaction => {
             if (target.id === member.id) return interaction.reply({ embeds: [createErrorEmbed(guild, 'Kendi üzerinizde uzaklaştırma işlemi uygulayamazsınız.')], flags: MessageFlags.Ephemeral });
             if (targetMember.kickable) {
                 await targetMember.kick(reason);
-                interaction.reply({ embeds: [createEmbed(guild, 'Uzaklaştırma (Kick)', `**${target.tag}** sunucudan uzaklaştırılmıştır.\n**Gerekçe:** ${reason}`, 0xE67E22)] });
+                interaction.reply({ embeds: [createEmbed(guild, 'Kick', `**${target.tag}** sunucudan banlanmıştır.\n**Sebep:** ${reason}`, 0xE67E22)] });
                 await sendCezaLog(guild, `${E.ev} Kullanıcı Atıldı`, `**Yetkili:** ${member.user.tag}\n**Atılan:** ${target.tag}\n**Sebep:** ${reason}`, 0xE67E22);
             } else {
                 interaction.reply({ embeds: [createErrorEmbed(guild, '**İşlem Başarısız:** Bu kullanıcının rolü benim rolümden daha yüksek veya eşit olduğu için işlem yapılamıyor.')], flags: MessageFlags.Ephemeral });
@@ -1757,10 +1787,20 @@ client.on('interactionCreate', async interaction => {
             if (target.id === member.id) return interaction.reply({ embeds: [createErrorEmbed(guild, 'Kendinizi yasaklayamazsınız.')], flags: MessageFlags.Ephemeral });
             try {
                 await guild.members.ban(target, { reason: reason });
-                interaction.reply({ embeds: [createEmbed(guild, 'Yasaklama (Ban)', `**${target.tag}** sunucudan kalıcı olarak yasaklanmıştır.\n**Gerekçe:** ${reason}`, 0xC0392B)] });
+                interaction.reply({ embeds: [createEmbed(guild, 'Ban', `**${target.tag}** sunucudan kalıcı olarak yasaklanmıştır.\n**Gerekçe:** ${reason}`, 0xC0392B)] });
                 await sendCezaLog(guild, `${E.ban} Kullanıcı Yasaklandı`, `**Yetkili:** ${member.user.tag}\n**Yasaklanan:** ${target.tag}\n**Sebep:** ${reason}`, 0xC0392B);
             } catch (e) {
                 interaction.reply({ embeds: [createErrorEmbed(guild, '**İşlem Başarısız:** Kullanıcıyı yasaklamak için yeterli yetkiye sahip değilim.')], flags: MessageFlags.Ephemeral });
+            }
+        }
+
+        if (commandName === 'unban') {
+            const targetId = options.getString('kullanici_id');
+            try {
+                await guild.bans.remove(targetId);
+                interaction.reply({ embeds: [createEmbed(guild, 'Unban', `<@${targetId}> ID'li kullanıcının sunucu yasaklaması kaldırıldı.`, 0x2ECC71)] });
+            } catch (e) {
+                interaction.reply({ embeds: [createErrorEmbed(guild, '**İşlem Başarısız:** Kullanıcı yasaklı değil veya ID hatalı.')], flags: MessageFlags.Ephemeral });
             }
         }
 
@@ -1773,7 +1813,7 @@ client.on('interactionCreate', async interaction => {
             if (target.id === member.id) return interaction.reply({ embeds: [createErrorEmbed(guild, 'Kendinize susturma işlemi uygulayamazsınız.')], flags: MessageFlags.Ephemeral });
             if (targetMember.moderatable) {
                 await targetMember.timeout(duration * 60000, reason);
-                interaction.reply({ embeds: [createEmbed(guild, 'Susturma', `**${target.tag}** kullanıcısına **${duration} dakika** boyunca susturulma uygulanmıştır.`, 0xF1C40F)] });
+                interaction.reply({ embeds: [createEmbed(guild, 'Mute', `**${target.tag}** kullanıcısına **${duration} dakika** boyunca susturulma uygulanmıştır.`, 0xF1C40F)] });
                 await sendCezaLog(guild, `${E.susturma} Kullanıcı Susturuldu`, `**Yetkili:** ${member.user.tag}\n**Susturulan:** ${target.tag}\n**Süre:** ${duration} Dakika\n**Sebep:** ${reason}`, 0xF1C40F);
             } else {
                 interaction.reply({ embeds: [createErrorEmbed(guild, '**Hata:** Bu kullanıcı Yönetici yetkisine sahip veya rolü benden yüksek.')], flags: MessageFlags.Ephemeral });
@@ -1786,7 +1826,7 @@ client.on('interactionCreate', async interaction => {
             if (!targetMember) return interaction.reply({ embeds: [createErrorEmbed(guild, 'Üye sunucuda bulunamadı.')], flags: MessageFlags.Ephemeral });
             if (targetMember.moderatable) {
                 await targetMember.timeout(null);
-                interaction.reply({ embeds: [createEmbed(guild, 'Susturma Kaldırıldı', `**${target.tag}** kullanıcısının susturması kaldırılmıştır.`, 0x2ECC71)] });
+                interaction.reply({ embeds: [createEmbed(guild, 'Unmute', `**${target.tag}** kullanıcısının susturması kaldırılmıştır.`, 0x2ECC71)] });
                 await sendCezaLog(guild, `${E.susturmaacma} Susturma Kaldırıldı`, `**Yetkili:** ${member.user.tag}\n**Kullanıcı:** ${target.tag}`, 0x2ECC71);
             } else {
                 interaction.reply({ embeds: [createErrorEmbed(guild, '**Hata:** İşlem gerçekleştirilemedi. Yetkilerimi kontrol ediniz.')], flags: MessageFlags.Ephemeral });
@@ -1926,7 +1966,7 @@ client.on('interactionCreate', async interaction => {
             if (value === 'help_genel') {
                 newEmbed = createEmbed(interaction.guild, `${E.kesif} Genel Komutlar`, '`/yardım` - Botun komut listesini gösterir.\n`/öneri` - Yönetim ekibine bir öneri gönderin.\n`/ping` - Botun gecikme süresini gösterir.\n`/sunucu-bilgi` - Sunucu hakkındaki detaylı bilgileri gösterir.\n`/kullanıcı-bilgi` - Belirtilen kullanıcı hakkında bilgi verir.\n`/medya` - TikTok videosunu oynatır.\n`/sohbet` - Makima ile sohbet et.\n`/level` - Level ve XP bilgilerini gösterir.\n`/level-listele` - Sunucunun XP liderlik tablosunu gösterir.', 0x5865F2);
             } else if (value === 'help_admin') {
-                newEmbed = createEmbed(interaction.guild, `${E.admin} Yönetici Komutları`, '`/log kanal-ayarla` - Log kanalını seçer.\n`/log kaldır` - Log sistemini kapatır.\n`/leave-logs ekle` - Çıkış log kanalını ayarlar.\n`/leave-logs kaldır` - Çıkış loglarını kapatır.\n`/level-sistem kur` - Level sistemini kurar.\n`/level-sistem kaldır` - Level sistemini kapatır.\n`/ceza-logs ayarla` - Ceza kanalını seçer.\n`/ceza-logs kaldır` - Ceza kanalını kapatır.\n`/karşılama kanal-ayarla` - Karşılama kanalını ayarlar.\n`/karşılama kaldır` - Karşılama sistemini kapatır.\n`/sohbet-karşılama ayarla` - Sohbet kanalına özel hoşgeldin mesajını açar.\n`/ses bağla` - Botu istenen sese sabitler.\n`/çekiliş` - Sunucuda yeni bir çekiliş başlatır.\n`/yeniden-çek` - Sona ermiş bir çekiliş için yeni kazanan belirler.\n`/mod-form` - Moderatör başvuru formunu kanala gönderir.\n`/ses-panel` - Ses yönetim panelini aktif eder.\n`/bilet oluştur` - Bilet sistemini sunucuya kurar.\n`/link-engel` - Sunucu içi link paylaşım korumasını yönetir.\n`/kick` - Kullanıcıyı sunucudan uzaklaştırır.\n`/ban` - Kullanıcıyı yasaklar.\n`/mute` - Kullanıcıya süreli kısıtlama uygular.\n`/unmute` - Kullanıcının kısıtlamasını kaldırır.\n`/sil` - Belirtilen miktarda mesajı kanaldan temizler.\n`/rol ayarla` - Sunucuya katılanlara verilecek otomatik rolü ayarlar.\n`/özel mesaj-ayarla` - Özel yanıt ayarlar.\n`/özel mesaj-sil` - Özel mesajı siler.\n`/hatırlatma ayarla` - Hatırlatma mesajı ayarlar.\n`/hatırlatma sil` - Hatırlatmaları siler.\n`/kanal-kilit aç` - Kanalın kilidini açar.\n`/kanal-kilit kapa` - Kanalı kilitler.', 0x5865F2);
+                newEmbed = createEmbed(interaction.guild, `${E.admin} Yönetici Komutları`, '`/log kanal-ayarla` - Log kanalını seçer.\n`/log kaldır` - Log sistemini kapatır.\n`/leave-logs ekle` - Çıkış log kanalını ayarlar.\n`/leave-logs kaldır` - Çıkış loglarını kapatır.\n`/level-sistem kur` - Level sistemini kurar.\n`/level-sistem kaldır` - Level sistemini kapatır.\n`/ceza-logs ayarla` - Ceza kanalını seçer.\n`/ceza-logs kaldır` - Ceza kanalını kapatır.\n`/karşılama kanal-ayarla` - Karşılama kanalını ayarlar.\n`/karşılama kaldır` - Karşılama sistemini kapatır.\n`/sohbet-karşılama ayarla` - Sohbet kanalına özel hoşgeldin mesajını açar.\n`/sohbet-karşılama kaldır` - Sohbet karşılama sistemini kapatır.\n`/ses bağla` - Botu istenen sese sabitler.\n`/çekiliş` - Sunucuda yeni bir çekiliş başlatır.\n`/yeniden-çek` - Sona ermiş bir çekiliş için yeni kazanan belirler.\n`/mod-form` - Moderatör başvuru formunu kanala gönderir.\n`/ses-panel` - Ses yönetim panelini aktif eder.\n`/bilet oluştur` - Bilet sistemini sunucuya kurar.\n`/link-engel aç` - Sunucu içi link paylaşım korumasını açar.\n`/link-engel kapa` - Sunucu içi link paylaşım korumasını kapatır.\n`/kick` - Kullanıcıyı sunucudan uzaklaştırır.\n`/ban` - Kullanıcıyı yasaklar.\n`/unban` - Kullanıcının yasaklamasını kaldırır.\n`/mute` - Kullanıcıya süreli kısıtlama uygular.\n`/unmute` - Kullanıcının kısıtlamasını kaldırır.\n`/sil` - Belirtilen miktarda mesajı kanaldan temizler.\n`/rol ayarla` - Sunucuya katılanlara verilecek otomatik rolü ayarlar.\n`/özel mesaj-ayarla` - Özel yanıt ayarlar.\n`/özel mesaj-sil` - Özel mesajı siler.\n`/hatırlatma ayarla` - Hatırlatma mesajı ayarlar.\n`/hatırlatma sil` - Hatırlatmaları siler.\n`/kanal-kilit aç` - Kanalın kilidini açar.\n`/kanal-kilit kapa` - Kanalı kilitler.', 0x5865F2);
             } else if (value === 'help_booster') {
                 newEmbed = createEmbed(interaction.guild, `${E.yildiz} Takviyeci Komutları`, '`/özel rol-ayarla` - Özel rol oluşturur.\n`/özel rol-sil` - Özel rolü siler.', 0x5865F2);
             } else if (value === 'help_systems') {
@@ -2086,6 +2126,16 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (interaction.isButton()) {
+        if (interaction.customId.startsWith('lvl_')) {
+            const parts = interaction.customId.split('_');
+            const action = parts[1];
+            const currentPage = parseInt(parts[2]);
+
+            let newPage = action === 'next' ? currentPage + 1 : currentPage - 1;
+            const pageData = await getLevelPageData(interaction.guild, newPage);
+            return interaction.update({ embeds: pageData.embeds, components: pageData.components });
+        }
+
         if (interaction.customId === 'btn_gw_join') {
             const gw = activeGiveaways.get(interaction.message.id);
             if (!gw) {
