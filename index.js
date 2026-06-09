@@ -1274,23 +1274,17 @@ client.on('interactionCreate', async interaction => {
             return interaction.reply({ embeds: pageData.embeds, components: pageData.components });
         }
 
-  if (commandName === 'sohbet') {
-            try {
-                await interaction.deferReply({ flags: MessageFlags.Ephemeral }); 
-            } catch (err) {
-                console.log("Sunucu gecikmesi: Discord 3 saniye kuralına takıldı.");
-                return; 
-            }
+ if (commandName === 'sohbet') {
+            await interaction.deferReply(); 
             
             const userMessage = options.getString('mesaj');
 
             const FREE_MODELS = [
-                "meta-llama/llama-3.3-70b-instruct:free",
-                "meta-llama/llama-3.1-8b-instruct:free",
-                "google/gemma-2-9b-it:free",
-                "mistralai/mistral-7b-instruct:free",
-                "microsoft/phi-3-mini-128k-instruct:free",
-                "qwen/qwen-2-7b-instruct:free"
+                "deepseek/deepseek-v3-0324:free",
+                "deepseek/deepseek-r1:free",
+                "google/gemma-4-26b-a4b-it:free",
+                "nvidia/nemotron-3-super-120b-a12b:free",
+                "meta-llama/llama-3.3-70b-instruct:free"
             ];
 
             const fetchPromises = FREE_MODELS.map(async (model) => {
@@ -1316,28 +1310,32 @@ client.on('interactionCreate', async interaction => {
                     })
                 });
 
+                if (!response.ok) {
+                    throw new Error(`Model ${model} yanıt vermedi. Status: ${response.status}`);
+                }
+
                 const data = await response.json();
                 
                 if (data.choices && data.choices.length > 0) {
                     return { model: model, content: data.choices[0].message.content };
                 } else {
-                    throw new Error("Dolu");
+                    throw new Error(`Model ${model} boş yanıt döndürdü.`);
                 }
             });
 
             try {
                 const fastestResponse = await Promise.any(fetchPromises);
-                const uyariYazisi = "\n\n-# Makima hata yapabilir, saçmalayabilir. Önemli bilgileri kontrol edin.";
+                const uyariYazisi = "\n\n-# Makima hata yapabilir. Önemli bilgileri kontrol edin.";
                 
                 const finalResponse = fastestResponse.content.length > 1900 
                     ? fastestResponse.content.substring(0, 1900) + "..." + uyariYazisi
                     : fastestResponse.content + uyariYazisi;
                     
                 await interaction.editReply({ content: finalResponse });
-                console.log(`Makima başarıyla cevap verdi. Kazanan model: ${fastestResponse.model}`);
+                console.log(`Makima başarıyla cevap verdi. ${fastestResponse.model}`);
             } catch (error) {
-                await interaction.editReply({ content: 'Makima şu an çok meşgul, lütfen 1-2 dakika sonra tekrar dene.' });
-                console.log("Tüm ücretsiz modeller meşgul veya hata verdi.");
+                console.error("Hata:", error);
+                await interaction.editReply({ content: 'Makima şu an çok meşgul, lütfen daha sonra tekrar dene.' });
             }
         }
         
