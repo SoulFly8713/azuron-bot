@@ -176,10 +176,12 @@ const client = new Client({
         GatewayIntentBits.GuildVoiceStates,
         GatewayIntentBits.GuildModeration,
         GatewayIntentBits.GuildInvites,
-        GatewayIntentBits.DirectMessages
+        GatewayIntentBits.DirectMessages 
     ],
-    partials: [Partials.Channel],
-    Partials.Message
+    partials: [
+        Partials.Channel,
+        Partials.Message  
+    ]
 });
 
 client.on('error', error => {
