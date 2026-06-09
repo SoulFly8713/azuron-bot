@@ -1280,9 +1280,11 @@ if (commandName === 'sohbet') {
             const userMessage = options.getString('mesaj');
 
             const FREE_MODELS = [
-                "google/gemma-2-27b-it:free",
-                "microsoft/phi-3-medium-128k-instruct:free",
-                "meta-llama/llama-3.1-8b-instruct:free"
+                "mistralai/mistral-7b-instruct:free",
+                "qwen/qwen-2.5-7b-instruct:free",
+                "meta-llama/llama-3-8b-instruct:free",
+                "huggingfaceh4/zephyr-7b-beta:free",
+                "google/gemma-2-9b-it:free"
             ];
 
             const fetchPromises = FREE_MODELS.map(async (model) => {
@@ -1310,7 +1312,7 @@ if (commandName === 'sohbet') {
                 });
 
                 if (!response.ok) {
-                    throw new Error(`Model ${model} yanıt vermedi. Status: ${response.status}`);
+                    throw new Error(response.status);
                 }
 
                 const data = await response.json();
@@ -1318,23 +1320,22 @@ if (commandName === 'sohbet') {
                 if (data.choices && data.choices.length > 0) {
                     return { model: model, content: data.choices[0].message.content };
                 } else {
-                    throw new Error(`Model ${model} boş yanıt döndürdü.`);
+                    throw new Error('Empty');
                 }
             });
 
             try {
                 const fastestResponse = await Promise.any(fetchPromises);
-                const uyariYazisi = "\n\n-# Makima hata yapabilir. Önemli bilgileri kontrol edin.";
+                const uyariYazisi = "\n\n-# Azuron Bot hata yapabilir. Önemli bilgileri kontrol edin.";
                 
                 const finalResponse = fastestResponse.content.length > 1900 
                     ? fastestResponse.content.substring(0, 1900) + "..." + uyariYazisi
                     : fastestResponse.content + uyariYazisi;
                     
                 await interaction.editReply({ content: finalResponse });
-                console.log(`Makima başarıyla cevap verdi. ${fastestResponse.model}`);
+                console.log(`Cevap verildi: ${fastestResponse.model}`);
             } catch (error) {
-                console.error("Hata:", error);
-                await interaction.editReply({ content: 'Makima şu an çok meşgul, lütfen daha sonra tekrar dene.' });
+                await interaction.editReply({ content: 'Şu an çok meşgulüm, lütfen daha sonra tekrar dene.' });
             }
         }
         
