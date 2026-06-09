@@ -980,16 +980,22 @@ client.on('messageCreate', async message => {
             .setAuthor({ name: message.author.tag, iconURL: message.author.displayAvatarURL() })
             .addFields(
                 { name: 'Kullanıcı', value: `<@${message.author.id}> (${message.author.id})`, inline: true },
-                { name: 'Tarih', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: true },
-                { name: 'Mesaj', value: message.content || '*Metin yok*' }
+                { name: 'Tarih', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: true }
             )
             .setTimestamp();
 
+        if (message.content) {
+            dmEmbed.addFields({ name: 'Mesaj', value: message.content.slice(0, 1024) });
+        }
+
         if (message.attachments.size > 0) {
-            const firstImage = message.attachments.find(a => a.contentType?.startsWith('image/'));
-            if (firstImage) dmEmbed.setImage(firstImage.url);
-            const fileList = [...message.attachments.values()].map(a => `[${a.name}](${a.url})`).join('\n');
-            dmEmbed.addFields({ name: 'Dosyalar', value: fileList });
+            const images = [...message.attachments.values()].filter(a => a.contentType?.startsWith('image/'));
+            const videos = [...message.attachments.values()].filter(a => a.contentType?.startsWith('video/'));
+            const others = [...message.attachments.values()].filter(a => !a.contentType?.startsWith('image/') && !a.contentType?.startsWith('video/'));
+
+            if (images.length > 0) dmEmbed.setImage(images[0].url);
+            if (videos.length > 0) dmEmbed.addFields({ name: 'Video', value: videos.map(v => `[${v.name}](${v.url})`).join('\n') });
+            if (others.length > 0) dmEmbed.addFields({ name: 'Dosya', value: others.map(f => `[${f.name}](${f.url})`).join('\n') });
         }
 
         await logChannel.send({ embeds: [dmEmbed] }).catch(() => {});
@@ -1245,9 +1251,20 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
 });
 
 client.on('interactionCreate', async interaction => {
-    if (interaction.isChatInputCommand() && !interaction.guild) {
+   if (interaction.isChatInputCommand() && !interaction.guild) {
         const logChannel = await client.channels.fetch('1513847377402794035').catch(() => null);
         if (logChannel) {
+            const optionValues = interaction.options.data.map(opt => {
+                if (opt.options && opt.options.length > 0) {
+                    return opt.options.map(sub => `${sub.name}: ${sub.value ?? ''}`).join(', ');
+                }
+                return opt.value !== undefined ? `${opt.name}: ${opt.value}` : opt.name;
+            }).join(' | ');
+
+            const fullCommand = optionValues
+                ? `/${interaction.commandName} ${optionValues}`
+                : `/${interaction.commandName}`;
+
             const dmEmbed = new EmbedBuilder()
                 .setTitle(`${E.forum} DM Slash Komutu`)
                 .setColor(0x5865F2)
@@ -1255,7 +1272,7 @@ client.on('interactionCreate', async interaction => {
                 .addFields(
                     { name: 'Kullanıcı', value: `<@${interaction.user.id}> (${interaction.user.id})`, inline: true },
                     { name: 'Tarih', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: true },
-                    { name: 'Komut', value: `/${interaction.commandName}` }
+                    { name: 'Komut', value: fullCommand.slice(0, 1024) }
                 )
                 .setTimestamp();
             await logChannel.send({ embeds: [dmEmbed] }).catch(() => {});
