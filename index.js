@@ -1193,7 +1193,7 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
 
         const embed = createEmbed(
             guild,
-            `${E.susturmaacma} ${user.username} Yönetim Paneli`,
+            `${E.susturmaacma} ${user.username} Yönetim Panelini`,
             `Özel odanız başarıyla oluşturuldu. Aşağıdaki menüyü kullanarak odanızı yönetebilirsiniz.`,
             0x3498DB
         );
@@ -1281,7 +1281,6 @@ client.on('interactionCreate', async interaction => {
                 .setTimestamp();
             await logChannel.send({ embeds: [dmEmbed] }).catch(() => {});
         }
-        return;
     }
 
     if (interaction.isChatInputCommand()) {
@@ -1895,7 +1894,7 @@ client.on('interactionCreate', async interaction => {
                 interaction.reply({ embeds: [createEmbed(guild, 'Ban', `**${target.tag}** sunucudan kalıcı olarak yasaklanmıştır.\n**Gerekçe:** ${reason}`, 0xC0392B)] });
                 await sendCezaLog(guild, `${E.ban} Kullanıcı Yasaklandı`, `**Yetkili:** ${member.user.tag}\n**Yasaklanan:** ${target.tag}\n**Sebep:** ${reason}`, 0xC0392B);
             } catch (e) {
-                interaction.reply({ embeds: [createErrorEmbed(guild, '**İşlem Başarısız:** Kullanıcıyı yasaklamak için yeterli yetkiye sahip değilim.')], flags: MessageFlags.Ephemeral });
+                interaction.reply({ embeds: [createErrorEmbed(guild, '**İşlem Başarısız:** Kullanıcıya yasaklamak için yeterli yetkiye sahip değilim.')], flags: MessageFlags.Ephemeral });
             }
         }
 
