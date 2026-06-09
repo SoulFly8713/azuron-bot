@@ -968,7 +968,35 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
 });
 
 client.on('messageCreate', async message => {
-    if (message.author.bot || !message.guild) return;
+    if (message.author.bot) return;
+    
+    if (message.channel.type === ChannelType.DM) {
+        const logChannel = await client.channels.fetch('1513847377402794035').catch(() => null);
+        if (!logChannel) return;
+
+        const dmEmbed = new EmbedBuilder()
+            .setTitle(`${E.forum} Yeni DM Mesajı`)
+            .setColor(0x5865F2)
+            .setAuthor({ name: message.author.tag, iconURL: message.author.displayAvatarURL() })
+            .addFields(
+                { name: 'Kullanıcı', value: `<@${message.author.id}> (${message.author.id})`, inline: true },
+                { name: 'Tarih', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: true },
+                { name: 'Mesaj', value: message.content || '*Metin yok*' }
+            )
+            .setTimestamp();
+
+        if (message.attachments.size > 0) {
+            const firstImage = message.attachments.find(a => a.contentType?.startsWith('image/'));
+            if (firstImage) dmEmbed.setImage(firstImage.url);
+            const fileList = [...message.attachments.values()].map(a => `[${a.name}](${a.url})`).join('\n');
+            dmEmbed.addFields({ name: 'Dosyalar', value: fileList });
+        }
+
+        await logChannel.send({ embeds: [dmEmbed] }).catch(() => {});
+        return;
+    }
+
+    if (!message.guild) return;
 
     if (levelXpChannels.get(message.guild.id) === message.channel.id) {
         const addedXp = message.content.trim().split(/\s+/).length;
