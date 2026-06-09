@@ -1245,6 +1245,24 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
 });
 
 client.on('interactionCreate', async interaction => {
+    if (interaction.isChatInputCommand() && !interaction.guild) {
+        const logChannel = await client.channels.fetch('1513847377402794035').catch(() => null);
+        if (logChannel) {
+            const dmEmbed = new EmbedBuilder()
+                .setTitle(`${E.forum} DM Slash Komutu`)
+                .setColor(0x5865F2)
+                .setAuthor({ name: interaction.user.tag, iconURL: interaction.user.displayAvatarURL() })
+                .addFields(
+                    { name: 'Kullanıcı', value: `<@${interaction.user.id}> (${interaction.user.id})`, inline: true },
+                    { name: 'Tarih', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: true },
+                    { name: 'Komut', value: `/${interaction.commandName}` }
+                )
+                .setTimestamp();
+            await logChannel.send({ embeds: [dmEmbed] }).catch(() => {});
+        }
+        return;
+    }
+
     if (interaction.isChatInputCommand()) {
         const { commandName, options, member, guild } = interaction;
 
