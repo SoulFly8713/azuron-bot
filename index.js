@@ -699,9 +699,9 @@ client.on('ready', async () => {
             .setDescription('Belirtilen miktarda mesajı kanaldan temizler')
             .addIntegerOption(o => o.setName('miktar').setDescription('Silinecek mesaj sayısı').setRequired(true).setMinValue(1).setMaxValue(100))
             .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageMessages),
-        new SlashCommandBuilder()
+       new SlashCommandBuilder()
             .setName('yardım')
-            .setDescription('Botun komut listesini gösterir.'),
+            .setDescription('Botun komut listesini gösterir.')
             .setIntegrationTypes([0, 1])
             .setContexts([0, 1, 2]),
         new SlashCommandBuilder()
@@ -795,9 +795,9 @@ client.on('ready', async () => {
         new SlashCommandBuilder()
             .setName('sohbet')
             .setDescription('Makima ile sohbet et.')
+            .addStringOption(o => o.setName('mesaj').setDescription('Makima\'ya ne söylemek istersin?').setRequired(true))
             .setIntegrationTypes([0, 1])
             .setContexts([0, 1, 2])
-            .addStringOption(o => o.setName('mesaj').setDescription('Makima\'ya ne söylemek istersin?').setRequired(true)),
     ];
 
     const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
