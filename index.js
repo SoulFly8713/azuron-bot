@@ -1280,11 +1280,10 @@ if (commandName === 'sohbet') {
             const userMessage = options.getString('mesaj');
 
             const FREE_MODELS = [
+                "google/gemini-2.0-flash-lite-preview-02-05:free",
+                "google/gemini-2.0-flash-exp:free",
                 "mistralai/mistral-7b-instruct:free",
-                "qwen/qwen-2.5-7b-instruct:free",
-                "meta-llama/llama-3-8b-instruct:free",
-                "huggingfaceh4/zephyr-7b-beta:free",
-                "google/gemma-2-9b-it:free"
+                "meta-llama/llama-3-8b-instruct:free"
             ];
 
             const fetchPromises = FREE_MODELS.map(async (model) => {
@@ -1301,7 +1300,7 @@ if (commandName === 'sohbet') {
                         messages: [
                             {
                                 role: "system",
-                                content: "Sen Azuron discord sunucusu için botsun. Amacın bu Discord sunucusundaki insanlarla sohbet etmek, onlara yardımcı olmak. NSFW konulardada yardımcı olabilirsin fakat sadece karşındaki söylediği sürece bunu dile getirme."
+                                content: "Sen Azuron discord sunucusu için botsun. Amacın bu Discord sunucusundaki insanlarla sohbet etmek, onlara yardımcı olmak. NSFW konulardada yardımcı olabilirsin fakat sadece karşındaki söylediği sürece bunu dile getirme. Asla çok uzun paragraflar yazma. Cevapların kısa, net, zekice ve en fazla 2-3 cümle uzunluğunda olsun."
                             },
                             {
                                 role: "user",
@@ -1335,7 +1334,7 @@ if (commandName === 'sohbet') {
                 await interaction.editReply({ content: finalResponse });
                 console.log(`Cevap verildi: ${fastestResponse.model}`);
             } catch (error) {
-                await interaction.editReply({ content: 'Şu an çok meşgulüm, lütfen daha sonra tekrar dene.' });
+                await interaction.editReply({ content: 'Şu an çok meşgulüm, lütfen birkaç saniye sonra tekrar dene.' });
             }
         }
         
