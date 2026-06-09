@@ -175,9 +175,11 @@ const client = new Client({
         GatewayIntentBits.GuildMembers,
         GatewayIntentBits.GuildVoiceStates,
         GatewayIntentBits.GuildModeration,
-        GatewayIntentBits.GuildInvites
+        GatewayIntentBits.GuildInvites,
+        GatewayIntentBits.DirectMessages
     ],
-    partials: [Partials.Channel]
+    partials: [Partials.Channel],
+    Partials.Message
 });
 
 client.on('error', error => {
