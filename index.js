@@ -207,6 +207,7 @@ const customUserMessages = new Map();
 const guildInvites = new Map();
 const userInvites = new Map();
 const tempVoiceChannels = new Set();
+const chatMemory = new Map();
 
 const levelReqs = [0, 0];
 let currentDiff = 0;
@@ -427,7 +428,7 @@ async function endGiveaway(messageId) {
     await Giveaway.update({ status: 'ended' }, { where: { messageId: messageId } }).catch(() => {});
 }
 
-client.on('clientReady', async () => {
+client.on('ready', async () => {
     client.user.setActivity({
         name: 'discord.gg/azuron',
         type: ActivityType.Streaming,
@@ -701,6 +702,8 @@ client.on('clientReady', async () => {
         new SlashCommandBuilder()
             .setName('yardım')
             .setDescription('Botun komut listesini gösterir.'),
+            .setIntegrationTypes([0, 1])
+            .setContexts([0, 1, 2]),
         new SlashCommandBuilder()
             .setName('link-engel')
             .setDescription('Sunucu içi link paylaşım korumasını yönetir.')
@@ -753,11 +756,15 @@ client.on('clientReady', async () => {
             .addUserOption(o => o.setName('kullanici').setDescription('Bilgisi alınacak kullanıcı').setRequired(false)),
         new SlashCommandBuilder()
             .setName('ping')
-            .setDescription('Botun gecikme süresini gösterir.'),
+            .setDescription('Botun gecikme süresini gösterir.')
+            .setIntegrationTypes([0, 1])
+            .setContexts([0, 1, 2]),
         new SlashCommandBuilder()
             .setName('medya')
             .setDescription('TikTok videosunu oynatır.')
-            .addStringOption(o => o.setName('link').setDescription('Video linki').setRequired(true)),
+            .addStringOption(o => o.setName('link').setDescription('Video linki').setRequired(true))
+            .setIntegrationTypes([0, 1])
+            .setContexts([0, 1, 2]),
         new SlashCommandBuilder()
             .setName('hatırlatma')
             .setDescription('Kanala otomatik hatırlatma mesajı ayarlar (Yönetici).')
@@ -788,13 +795,17 @@ client.on('clientReady', async () => {
         new SlashCommandBuilder()
             .setName('sohbet')
             .setDescription('Makima ile sohbet et.')
-            .addStringOption(o => o.setName('mesaj').setDescription('Makima\'ya ne söylemek istersin?').setRequired(true))
+            .setIntegrationTypes([0, 1])
+            .setContexts([0, 1, 2])
+            .addStringOption(o => o.setName('mesaj').setDescription('Makima\'ya ne söylemek istersin?').setRequired(true)),
     ];
 
     const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
     try {
         await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
     } catch (error) {}
+    
+    console.log(`Bot basariyla aktif oldu: ${client.user.tag}`);
 });
 
 client.on('inviteCreate', invite => {
@@ -1274,10 +1285,21 @@ client.on('interactionCreate', async interaction => {
             return interaction.reply({ embeds: pageData.embeds, components: pageData.components });
         }
 
-if (commandName === 'sohbet') {
-            await interaction.deferReply(); 
-            
+        if (commandName === 'sohbet') {
+            await interaction.deferReply();
             const userMessage = options.getString('mesaj');
+            const userId = interaction.user.id;
+
+            if (!chatMemory.has(userId)) {
+                chatMemory.set(userId, []);
+            }
+            const userHistory = chatMemory.get(userId);
+
+            userHistory.push({ role: "user", content: userMessage });
+
+            if (userHistory.length > 10) {
+                userHistory.shift();
+            }
 
             const FREE_MODELS = [
                 "meta-llama/llama-4-scout:free",
@@ -1287,6 +1309,11 @@ if (commandName === 'sohbet') {
                 "openrouter/free"
             ];
 
+            const systemMessage = {
+                role: "system",
+                content: "Sen Azuron discord sunucusu için botsun. Amacın bu Discord sunucusundaki insanlarla sohbet etmek, onlara yardımcı olmak. Asla çok uzun paragraflar yazma. Cevapların kısa, net, zekice ve en fazla 2-3 cümle uzunluğunda olsun."
+            };
+
             const fetchPromises = FREE_MODELS.map(async (model) => {
                 const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
                     method: 'POST',
@@ -1295,24 +1322,15 @@ if (commandName === 'sohbet') {
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        model: model, 
+                        model: model,
                         temperature: 0.6,
-                        max_tokens: 200, 
-                        messages: [
-                            {
-                                role: "system",
-                                content: "Sen Azuron discord sunucusu için botsun. Amacın bu Discord sunucusundaki insanlarla sohbet etmek, onlara yardımcı olmak. Asla çok uzun paragraflar yazma. Cevapların kısa, net, zekice and en fazla 2-3 cümle uzunluğunda olsun."
-                            },
-                            {
-                                role: "user",
-                                content: userMessage
-                            }
-                        ]
+                        max_tokens: 200,
+                        messages: [systemMessage, ...userHistory]
                     })
                 });
 
                 if (!response.ok) {
-                    throw new Error(`Model ${model} reddetti: ${response.status}`);
+                    throw new Error(response.status);
                 }
 
                 const data = await response.json();
@@ -1324,19 +1342,36 @@ if (commandName === 'sohbet') {
                 }
             });
 
+            const timeoutPromise = new Promise((_, reject) => {
+                setTimeout(() => reject(new Error('TIMEOUT')), 30000);
+            });
+
             try {
-                const fastestResponse = await Promise.any(fetchPromises);
+                const fastestResponse = await Promise.race([
+                    Promise.any(fetchPromises),
+                    timeoutPromise
+                ]);
+
                 const uyariYazisi = "\n\n-# Azuron Bot hata yapabilir. Önemli bilgileri kontrol edin.";
                 
                 const finalResponse = fastestResponse.content.length > 1900 
                     ? fastestResponse.content.substring(0, 1900) + "..." + uyariYazisi
                     : fastestResponse.content + uyariYazisi;
+
+                userHistory.push({ role: "assistant", content: fastestResponse.content });
+                if (userHistory.length > 10) {
+                    userHistory.shift();
+                }
                     
                 await interaction.editReply({ content: finalResponse });
-                console.log(`Cevap verildi: ${fastestResponse.model}`);
             } catch (error) {
-                console.error("Sohbet Hatası:", error);
-                await interaction.editReply({ content: 'Şu an çok meşgulum, lütfen birkaç dakika sonra tekrar dene.' });
+                if (error.message === 'TIMEOUT') {
+                    userHistory.pop(); 
+                    await interaction.editReply({ content: 'Anlayamadım, daha sonra tekrar dener misin?' });
+                } else {
+                    userHistory.pop();
+                    await interaction.editReply({ content: 'Şu an çok meşgulüm, lütfen birkaç saniye sonra tekrar dene.' });
+                }
             }
         }
         
@@ -3003,12 +3038,7 @@ async function getGeneratorChannelId(guild) {
     return c ? c.id : null;
 }
 
-client.on("debug", console.log);
 client.on("error", console.error);
-
-client.once('ready', () => {
-    console.log(`Bot basariyla aktif oldu: ${client.user.tag}`);
-});
 
 client.login(process.env.TOKEN)
     .then(() => {
