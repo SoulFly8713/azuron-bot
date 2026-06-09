@@ -1280,8 +1280,8 @@ if (commandName === 'sohbet') {
             const userMessage = options.getString('mesaj');
 
             const FREE_MODELS = [
-                "google/gemini-2.0-flash-lite-preview-02-05:free",
-                "google/gemini-2.0-flash-exp:free",
+                "google/gemini-3.1-flash-lite-preview:free",
+                "google/gemini-3.1-pro-preview:free",
                 "mistralai/mistral-7b-instruct:free",
                 "meta-llama/llama-3-8b-instruct:free"
             ];
@@ -1296,7 +1296,7 @@ if (commandName === 'sohbet') {
                     body: JSON.stringify({
                         model: model, 
                         temperature: 0.6,
-                        max_tokens: 200,
+                        max_tokens: 200, 
                         messages: [
                             {
                                 role: "system",
@@ -1334,7 +1334,7 @@ if (commandName === 'sohbet') {
                 await interaction.editReply({ content: finalResponse });
                 console.log(`Cevap verildi: ${fastestResponse.model}`);
             } catch (error) {
-                await interaction.editReply({ content: 'Şu an çok meşgulüm, lütfen birkaç saniye sonra tekrar dene.' });
+                await interaction.editReply({ content: 'Şu an çok meşgulüm, lütfen daha sonra tekrar dene.' });
             }
         }
         
