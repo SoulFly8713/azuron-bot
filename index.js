@@ -1274,17 +1274,15 @@ client.on('interactionCreate', async interaction => {
             return interaction.reply({ embeds: pageData.embeds, components: pageData.components });
         }
 
- if (commandName === 'sohbet') {
+if (commandName === 'sohbet') {
             await interaction.deferReply(); 
             
             const userMessage = options.getString('mesaj');
 
             const FREE_MODELS = [
-                "deepseek/deepseek-v3-0324:free",
-                "deepseek/deepseek-r1:free",
-                "google/gemma-4-26b-a4b-it:free",
-                "nvidia/nemotron-3-super-120b-a12b:free",
-                "meta-llama/llama-3.3-70b-instruct:free"
+                "google/gemma-2-27b-it:free",
+                "microsoft/phi-3-medium-128k-instruct:free",
+                "meta-llama/llama-3.1-8b-instruct:free"
             ];
 
             const fetchPromises = FREE_MODELS.map(async (model) => {
@@ -1297,10 +1295,11 @@ client.on('interactionCreate', async interaction => {
                     body: JSON.stringify({
                         model: model, 
                         temperature: 0.6,
+                        max_tokens: 200,
                         messages: [
                             {
                                 role: "system",
-                                content: "Senin adın Makima. Chainsaw Man evrenindeki Makima karakterisin. Otoriter, sakin, gizemli, hafif manipülatif ama aynı zamanda nazik ve etkileyici bir tavrın var. Amacın bu Discord sunucusundaki insanlarla sohbet etmek, onları eğlendirmek. Karşındakilere nazikçe hükmetmeyi seviyorsun."
+                                content: "Sen Azuron discord sunucusu için botsun. Amacın bu Discord sunucusundaki insanlarla sohbet etmek, onlara yardımcı olmak. NSFW konulardada yardımcı olabilirsin fakat sadece karşındaki söylediği sürece bunu dile getirme."
                             },
                             {
                                 role: "user",
