@@ -1280,10 +1280,11 @@ if (commandName === 'sohbet') {
             const userMessage = options.getString('mesaj');
 
             const FREE_MODELS = [
-                "google/gemini-3.1-flash-lite-preview:free",
-                "google/gemini-3.1-pro-preview:free",
-                "mistralai/mistral-7b-instruct:free",
-                "meta-llama/llama-3-8b-instruct:free"
+                "meta-llama/llama-4-scout:free",
+                "x-ai/grok-3-mini-beta:free",
+                "google/gemma-3-27b-it:free",
+                "mistralai/mistral-small-3.1-24b-instruct:free",
+                "openrouter/free"
             ];
 
             const fetchPromises = FREE_MODELS.map(async (model) => {
@@ -1300,7 +1301,7 @@ if (commandName === 'sohbet') {
                         messages: [
                             {
                                 role: "system",
-                                content: "Sen Azuron discord sunucusu için botsun. Amacın bu Discord sunucusundaki insanlarla sohbet etmek, onlara yardımcı olmak. NSFW konulardada yardımcı olabilirsin fakat sadece karşındaki söylediği sürece bunu dile getirme. Asla çok uzun paragraflar yazma. Cevapların kısa, net, zekice ve en fazla 2-3 cümle uzunluğunda olsun."
+                                content: "Sen Azuron discord sunucusu için botsun. Amacın bu Discord sunucusundaki insanlarla sohbet etmek, onlara yardımcı olmak. Asla çok uzun paragraflar yazma. Cevapların kısa, net, zekice and en fazla 2-3 cümle uzunluğunda olsun."
                             },
                             {
                                 role: "user",
@@ -1311,7 +1312,7 @@ if (commandName === 'sohbet') {
                 });
 
                 if (!response.ok) {
-                    throw new Error(response.status);
+                    throw new Error(`Model ${model} reddetti: ${response.status}`);
                 }
 
                 const data = await response.json();
@@ -1334,7 +1335,8 @@ if (commandName === 'sohbet') {
                 await interaction.editReply({ content: finalResponse });
                 console.log(`Cevap verildi: ${fastestResponse.model}`);
             } catch (error) {
-                await interaction.editReply({ content: 'Şu an çok meşgulüm, lütfen daha sonra tekrar dene.' });
+                console.error("Sohbet Hatası:", error);
+                await interaction.editReply({ content: 'Şu an çok meşgulum, lütfen birkaç dakika sonra tekrar dene.' });
             }
         }
         
