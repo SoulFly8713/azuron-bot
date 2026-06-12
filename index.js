@@ -91,9 +91,7 @@ app.get("/", (req, res) => {
 
 app.listen(process.env.PORT || 3000, () => {});
 
-process.on('unhandledRejection', error => {
-    console.error("Hata:", error);
-});
+process.on('unhandledRejection', error => {});
 
 const sequelize = new Sequelize(process.env.DATABASE_URL, {
     dialect: 'postgres',
@@ -184,9 +182,7 @@ const client = new Client({
     ]
 });
 
-client.on('error', error => {
-    console.error("Discord Bağlantı Hatası:", error);
-});
+client.on('error', error => {});
 
 const TARGET_ROLE_ID = '1473029465587323076';
 
@@ -432,7 +428,7 @@ async function endGiveaway(messageId) {
     await Giveaway.update({ status: 'ended' }, { where: { messageId: messageId } }).catch(() => {});
 }
 
-client.on('ready', async () => {
+client.on('clientReady', async () => {
     client.user.setActivity({
         name: 'discord.gg/azuron',
         type: ActivityType.Streaming,
@@ -1257,43 +1253,45 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
 client.on('interactionCreate', async interaction => {
     try {
         if (interaction.isChatInputCommand() && !interaction.guild) {
-            Promise.resolve().then(async () => {
+            const dmUser = interaction.user;
+            const dmCmd = interaction.commandName;
+            let dmOpts = '';
+            try {
+                dmOpts = (interaction.options?.data || []).map(opt => {
+                    if (opt.options && opt.options.length > 0) {
+                        return opt.options.map(sub => `${sub.name}: ${sub.value ?? ''}`).join(', ');
+                    }
+                    return opt.value !== undefined ? `${opt.name}: ${opt.value}` : opt.name;
+                }).join(' | ');
+            } catch (e) {}
+
+            const dmFull = dmOpts ? `/${dmCmd} ${dmOpts}` : `/${dmCmd}`;
+
+            setTimeout(async () => {
                 try {
                     const logChannel = client.channels.cache.get('1513847377402794035') || await client.channels.fetch('1513847377402794035').catch(() => null);
                     if (logChannel) {
-                        const optionsData = interaction.options?.data || [];
-                        const optionValues = optionsData.map(opt => {
-                            if (opt.options && opt.options.length > 0) {
-                                return opt.options.map(sub => `${sub.name}: ${sub.value ?? ''}`).join(', ');
-                            }
-                            return opt.value !== undefined ? `${opt.name}: ${opt.value}` : opt.name;
-                        }).join(' | ');
-
-                        const fullCommand = optionValues
-                            ? `/${interaction.commandName} ${optionValues}`
-                            : `/${interaction.commandName}`;
-
                         const dmEmbed = new EmbedBuilder()
                             .setTitle(`${E.forum} DM Slash Komutu`)
                             .setColor(0x5865F2)
-                            .setAuthor({ name: interaction.user.tag, iconURL: interaction.user.displayAvatarURL() })
+                            .setAuthor({ name: dmUser.tag, iconURL: dmUser.displayAvatarURL() })
                             .addFields(
-                                { name: 'Kullanıcı', value: `<@${interaction.user.id}> (${interaction.user.id})`, inline: true },
+                                { name: 'Kullanıcı', value: `<@${dmUser.id}> (${dmUser.id})`, inline: true },
                                 { name: 'Tarih', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: true },
-                                { name: 'Komut', value: fullCommand.slice(0, 1024) }
+                                { name: 'Komut', value: dmFull.slice(0, 1024) }
                             )
                             .setTimestamp();
                         await logChannel.send({ embeds: [dmEmbed] }).catch(() => {});
                     }
                 } catch (e) {}
-            });
+            }, 100);
         }
 
         if (interaction.isChatInputCommand()) {
             const { commandName, options, member, guild } = interaction;
 
             if (!guild && !['yardım', 'ping', 'sohbet', 'medya'].includes(commandName)) {
-                return await interaction.reply({ content: 'Bu komut sadece sunucularda kullanılabilir.', ephemeral: true }).catch(() => {});
+                return await interaction.reply({ content: 'Bu komut sadece sunucularda kullanılabilir.' }).catch(() => {});
             }
 
             if (commandName === 'ceza-logs') {
@@ -1556,7 +1554,7 @@ client.on('interactionCreate', async interaction => {
             }
 
             if (commandName === 'ping') {
-                return interaction.reply({ content: `🏓 ...pong! ${Math.round(client.ws.ping)} ms`, ephemeral: true });
+                return interaction.reply({ content: `🏓 ...pong! ${Math.round(client.ws.ping)} ms` });
             }
 
             if (commandName === 'medya') {
@@ -1575,13 +1573,13 @@ client.on('interactionCreate', async interaction => {
                 try {
                     parsedUrl = new URL(originalUrl);
                 } catch(e) {
-                    return interaction.reply({ content: 'Lütfen geçerli bir URL girin.', ephemeral: true });
+                    return interaction.reply({ content: 'Lütfen geçerli bir URL girin.' });
                 }
 
                 if (parsedUrl.hostname.includes('tiktok.com')) {
                     parsedUrl.hostname = 'tnktok.com';
                 } else {
-                    return interaction.reply({ content: 'Lütfen geçerli bir TikTok linki girin.', ephemeral: true });
+                    return interaction.reply({ content: 'Lütfen geçerli bir TikTok linki girin.' });
                 }
 
                 const row = new ActionRowBuilder().addComponents(
@@ -1810,10 +1808,10 @@ client.on('interactionCreate', async interaction => {
                             new StringSelectMenuOptionBuilder().setLabel('Sistemler').setValue('help_systems').setEmoji(E_ID.bakim)
                         );
                     const row = new ActionRowBuilder().addComponents(menu);
-                    return await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
+                    return await interaction.reply({ embeds: [embed], components: [row] });
                 } catch (error) {
                     if (!interaction.replied && !interaction.deferred) {
-                        return await interaction.reply({ content: 'Bu işlem sırasında bir hata oluştu.', ephemeral: true }).catch(() => {});
+                        return await interaction.reply({ content: 'Bu işlem sırasında bir hata oluştu.' }).catch(() => {});
                     }
                 }
             }
@@ -2084,7 +2082,7 @@ client.on('interactionCreate', async interaction => {
                 if (value === 'help_genel') {
                     newEmbed = createEmbed(interaction.guild, `${E.kesif} Genel Komutlar`, '`/yardım` - Botun komut listesini gösterir.\n`/öneri` - Yönetim ekibine bir öneri gönderin.\n`/ping` - Botun gecikme süresini gösterir.\n`/sunucu-bilgi` - Sunucu hakkındaki detaylı bilgileri gösterir.\n`/kullanıcı-bilgi` - Belirtilen kullanıcı hakkında bilgi verir.\n`/medya` - TikTok videosunu oynatır.\n`/sohbet` - Makima ile sohbet et.\n`/level` - Level ve XP bilgilerini gösterir.\n`/level-listele` - Sunucunun XP liderlik tablosunu gösterir.', 0x5865F2);
                 } else if (value === 'help_admin') {
-                    newEmbed = createEmbed(interaction.guild, `${E.admin} Yönetici Komutları`, '`/log kanal-ayarla` - Log kanalını seçer.\n`/log kaldır` - Log sistemini kapatır.\n`/leave-logs ekle` - Çıkış log kanalını ayarlar.\n`/leave-logs kaldır` - Çıkış loglarını kapatır.\n`/level-sistem kur` - Level sistemini kurar.\n`/level-sistem kaldır` - Level sistemini kapatır.\n`/ceza-logs ayarla` - Ceza kanalını seçer.\n`/ceza-logs kaldır` - Ceza kanalını kapatır.\n`/karşılama kanal-ayarla` - Karşılama kanalını ayarlar.\n`/karşılama kaldır` - Karşılama sistemini kapatır.\n`/sohbet-karşılama ayarla` - Sohbet kanalına özel hoşgeldin mesajını açar.\n`/sohbet-karşılama kaldır` - Sohbet karşılama sistemini kapatır.\n`/ses bağla` - Botu istenen sese sabitler.\n`/çekiliş` - Sunucuda yeni bir çekiliş başlatır.\n`/yeniden-çek` - Sona ermiş bir çekiliş için yeni kazanan belirler.\n`/mod-form` - Moderatör başvuru formunu kanala gönderir.\n`/ses-panel` - Ses yönetim panelini aktif eder.\n`/bilet oluştur` - Bilet sistemini sunucuya kurar.\n`/link-engel aç` - Sunucu içi link paylaşım korumasını açar.\n`/link-engel kapa` - Sunucu içi link paylaşım korumasını kapatır.\n`/kick` - Kullanıcıyı sunucudan uzaklaştırır.\n`/ban` - Kullanıcıyı yasaklar.\n`/unban` - Kullanıcının yasaklamasını kaldırır.\n`/mute` - Kullanıcıya süreli kısıtlama uygular.\n`/unmute` - Kullanıcının kısıtlamasını kaldırır.\n`/sil` - Belirtilen miktarda mesajı kanaldan temizler.\n`/rol ayarla` - Sunucuya katılanlara verilecek otomatik rolü ayarlar.\n`/özel mesaj-ayarla` - Özel yanıt ayarlar.\n`/özel mesaj-sil` - Özel mesajı siler.\n`/hatırlatma ayarla` - Hatırlatma mesajı ayarlar.\n`/hatırlatma sil` - Hatırlatmaları siler.\n`/kanal-kilit aç` - Kanalın kilidini açar.\n`/kanal-kilit kapa` - Kanalı kilitler.', 0x5865F2);
+                    newEmbed = createEmbed(interaction.guild, `${E.admin} Yönetici Komutları`, '`/log kanal-ayarla` - Log kanalını seçer.\n`/log kaldır` - Log sistemini kapatır.\n`/leave-logs ekle` - Çıkış log kanalını ayarlar.\n`/leave-logs kaldır` - Çıkış loglarını kapatır.\n`/level-sistem kur` - Level sistemini kurar.\n`/level-sistem kaldır` - Level sistemini kapatır.\n`/ceza-logs ayarla` - Ceza kanalını seçer.\n`/ceza-logs kaldır` - Ceza kanalını kapatır.\n`/karşılama kanal-ayarla` - Karşılama kanalını ayarlar.\n`/karşılama kaldır` - Karşılama sistemini kapatır.\n`/sohbet-karşılama ayarla` - Sohbet kanalına özel hoşgeldin mesajını açar.\n`/sohbet-karşılama kaldır` - Sohbet karşılama sistemini kapatır.\n`/ses bağla` - Botu istenen sese sabitler.\n`/çekiliş` - Sunucuda yeni bir çekiliş başlatır.\n`/yeniden-çek` - Sona ermiş bir çekiliş için yeni kazanan belirler.\n`/mod-form` - Moderatör başvuru formunu kanala gönderir.\n`/ses-panel` - Ses yönetim panelini aktif eder.\n`/bilet oluştur` - Bilet sistemi sunucuya kurar.\n`/link-engel aç` - Sunucu içi link paylaşım korumasını açar.\n`/link-engel kapa` - Sunucu içi link paylaşım korumasını kapatır.\n`/kick` - Kullanıcıyı sunucudan uzaklaştırır.\n`/ban` - Kullanıcıyı yasaklar.\n`/unban` - Kullanıcının yasaklamasını kaldırır.\n`/mute` - Kullanıcıya süreli kısıtlama uygular.\n`/unmute` - Kullanıcının kısıtlamasını kaldırır.\n`/sil` - Belirtilen miktarda mesajı kanaldan temizler.\n`/rol ayarla` - Sunucuya katılanlara verilecek otomatik rolü ayarlar.\n`/özel mesaj-ayarla` - Özel yanıt ayarlar.\n`/özel mesaj-sil` - Özel mesajı siler.\n`/hatırlatma ayarla` - Hatırlatma mesajı ayarlar.\n`/hatırlatma sil` - Hatırlatmaları siler.\n`/kanal-kilit aç` - Kanalın kilidini açar.\n`/kanal-kilit kapa` - Kanalı kilitler.', 0x5865F2);
                 } else if (value === 'help_booster') {
                     newEmbed = createEmbed(interaction.guild, `${E.yildiz} Takviyeci Komutları`, '`/özel rol-ayarla` - Özel rol oluşturur.\n`/özel rol-sil` - Özel rolü siler.', 0x5865F2);
                 } else if (value === 'help_systems') {
@@ -3023,7 +3021,7 @@ client.on('interactionCreate', async interaction => {
         }
     } catch (generalError) {
         if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
-            await interaction.reply({ content: 'Bir hata oluştu.', ephemeral: true }).catch(() => {});
+            await interaction.reply({ content: 'Bir hata oluştu.', flags: MessageFlags.Ephemeral }).catch(() => {});
         } else if (interaction.deferred) {
             await interaction.editReply({ content: 'Bir hata oluştu.' }).catch(() => {});
         }
@@ -3128,9 +3126,5 @@ async function getGeneratorChannelId(guild) {
 client.on("error", console.error);
 
 client.login(process.env.TOKEN)
-    .then(() => {
-        console.log("Token dogru.");
-    })
-    .catch(err => {
-        console.error("Hata:", err);
-    });
+    .then(() => {})
+    .catch(err => {});
