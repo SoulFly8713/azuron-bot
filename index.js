@@ -46,43 +46,6 @@ const E = {
     sag_ok: '<:sag_ok:1506626893535772752>'
 };
 
-const E_ID = {
-    yildiz: '1491436289487278281',
-    duzenle: '1491436286979080202',
-    arama: '1491436285120745552',
-    konfeti: '1491436283212468305',
-    duyuru2: '1491436279454236742',
-    copkutusu: '1491436277478719488',
-    tekrar: '1491436275432161320',
-    susturma: '1491436812730634281',
-    bakim: '1491436513458655272',
-    thumbsup: '1491436511953027293',
-    thumbsdown: '1491436510455660544',
-    forum: '1491436508895252641',
-    kayit: '1491436507058274325',
-    kesif: '1491436505678352576',
-    etkinlik: '1491436503493251212',
-    bilet: '1491436329874100414',
-    uye: '1491436328238190785',
-    ban: '1491436326875303946',
-    susturmaacma: '1491436325310562335',
-    duyuru: '1491436324002070571',
-    ev: '1491436321418379414',
-    oyun: '1491436319539200100',
-    zamanasimi: '1491436318230839316',
-    surpiz: '1491436316674752522',
-    onay: '1491436314774470656',
-    red: '1491436313055068220',
-    engel: '1491436311427416075',
-    uye2: '1491436309569343528',
-    yardim: '1491436307371528242',
-    kanalac: '1491436296445497525',
-    kanalkapa: '1491436292297330698',
-    admin: '1491439896882057226',
-    sol_ok: '1506626890935570553',
-    sag_ok: '1506626893535772752'
-};
-
 const app = express();
 
 app.get("/", (req, res) => {
@@ -91,7 +54,9 @@ app.get("/", (req, res) => {
 
 app.listen(process.env.PORT || 3000, () => {});
 
-process.on('unhandledRejection', error => {});
+process.on('unhandledRejection', error => {
+    console.error('Beklenmeyen Hata:', error);
+});
 
 const sequelize = new Sequelize(process.env.DATABASE_URL, {
     dialect: 'postgres',
@@ -182,7 +147,9 @@ const client = new Client({
     ]
 });
 
-client.on('error', error => {});
+client.on('error', error => {
+    console.error('Discord API Hatası:', error);
+});
 
 const TARGET_ROLE_ID = '1473029465587323076';
 
@@ -428,7 +395,7 @@ async function endGiveaway(messageId) {
     await Giveaway.update({ status: 'ended' }, { where: { messageId: messageId } }).catch(() => {});
 }
 
-client.on('clientReady', async () => {
+client.on('ready', async () => {
     client.user.setActivity({
         name: 'discord.gg/azuron',
         type: ActivityType.Streaming,
@@ -1267,24 +1234,20 @@ client.on('interactionCreate', async interaction => {
 
             const dmFull = dmOpts ? `/${dmCmd} ${dmOpts}` : `/${dmCmd}`;
 
-            setTimeout(async () => {
-                try {
-                    const logChannel = client.channels.cache.get('1513847377402794035') || await client.channels.fetch('1513847377402794035').catch(() => null);
-                    if (logChannel) {
-                        const dmEmbed = new EmbedBuilder()
-                            .setTitle(`${E.forum} DM Slash Komutu`)
-                            .setColor(0x5865F2)
-                            .setAuthor({ name: dmUser.tag, iconURL: dmUser.displayAvatarURL() })
-                            .addFields(
-                                { name: 'Kullanıcı', value: `<@${dmUser.id}> (${dmUser.id})`, inline: true },
-                                { name: 'Tarih', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: true },
-                                { name: 'Komut', value: dmFull.slice(0, 1024) }
-                            )
-                            .setTimestamp();
-                        await logChannel.send({ embeds: [dmEmbed] }).catch(() => {});
-                    }
-                } catch (e) {}
-            }, 100);
+            client.channels.fetch('1513847377402794035').then(logChannel => {
+                if (!logChannel) return;
+                const dmEmbed = new EmbedBuilder()
+                    .setTitle(`${E.forum} DM Slash Komutu`)
+                    .setColor(0x5865F2)
+                    .setAuthor({ name: dmUser.tag, iconURL: dmUser.displayAvatarURL() })
+                    .addFields(
+                        { name: 'Kullanıcı', value: `<@${dmUser.id}> (${dmUser.id})`, inline: true },
+                        { name: 'Tarih', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: true },
+                        { name: 'Komut', value: dmFull.slice(0, 1024) }
+                    )
+                    .setTimestamp();
+                logChannel.send({ embeds: [dmEmbed] }).catch(() => {});
+            }).catch(() => {});
         }
 
         if (interaction.isChatInputCommand()) {
