@@ -700,7 +700,8 @@ client.on('clientReady', async () => {
             .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageMessages),
         new SlashCommandBuilder()
             .setName('yardım')
-            .setDescription('Botun komut listesini gösterir.'),
+            .setDescription('Botun komut listesini gösterir.')
+            .setDMPermission(true),
         new SlashCommandBuilder()
             .setName('link-engel')
             .setDescription('Sunucu içi link paylaşım korumasını yönetir.')
@@ -757,6 +758,7 @@ client.on('clientReady', async () => {
         new SlashCommandBuilder()
             .setName('medya')
             .setDescription('TikTok videosunu oynatır.')
+            .setDMPermission(true)
             .addStringOption(o => o.setName('link').setDescription('Video linki').setRequired(true)),
         new SlashCommandBuilder()
             .setName('hatırlatma')
@@ -1207,7 +1209,8 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
 
 client.on('interactionCreate', async interaction => {
     if (interaction.isChatInputCommand()) {
-        const { commandName, options, member, guild } = interaction;
+        const { commandName, options, member } = interaction;
+        const guild = interaction.guild || null;
 
         if (commandName === 'ceza-logs') {
             const sub = options.getSubcommand();
