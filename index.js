@@ -9,6 +9,8 @@ const { joinVoiceChannel, getVoiceConnection } = require('@discordjs/voice');
 const express = require("express");
 const { Sequelize, DataTypes } = require('sequelize');
 
+const E_ID = E;
+
 const E = {
     yildiz: '<:yildiz:1491436289487278281>',
     duzenle: '<:duzenle:1491436286979080202>',
