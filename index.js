@@ -1209,9 +1209,8 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
 
 client.on('interactionCreate', async interaction => {
     if (interaction.isChatInputCommand()) {
-        const { commandName, options, member } = interaction;
-        const guild = interaction.guild || null;
-
+       const { commandName, options, member, guild } = interaction;
+        
         if (commandName === 'ceza-logs') {
             const sub = options.getSubcommand();
             if (sub === 'ayarla') {
