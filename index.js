@@ -427,7 +427,7 @@ async function endGiveaway(messageId) {
     await Giveaway.update({ status: 'ended' }, { where: { messageId: messageId } }).catch(() => {});
 }
 
-client.on('ready', async () => {
+client.on('clientReady', async () => {
     client.user.setActivity({
         name: 'discord.gg/azuron',
         type: ActivityType.Streaming,
@@ -698,11 +698,9 @@ client.on('ready', async () => {
             .setDescription('Belirtilen miktarda mesajı kanaldan temizler')
             .addIntegerOption(o => o.setName('miktar').setDescription('Silinecek mesaj sayısı').setRequired(true).setMinValue(1).setMaxValue(100))
             .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageMessages),
-      new SlashCommandBuilder()
+        new SlashCommandBuilder()
             .setName('yardım')
-            .setDescription('Botun komut listesini gösterir.')
-            .setIntegrationTypes([0, 1])
-            .setContexts([0, 1, 2]),
+            .setDescription('Botun komut listesini gösterir.'),
         new SlashCommandBuilder()
             .setName('link-engel')
             .setDescription('Sunucu içi link paylaşım korumasını yönetir.')
@@ -759,8 +757,6 @@ client.on('ready', async () => {
         new SlashCommandBuilder()
             .setName('medya')
             .setDescription('TikTok videosunu oynatır.')
-            .setIntegrationTypes([0, 1])
-            .setContexts([0, 1, 2])
             .addStringOption(o => o.setName('link').setDescription('Video linki').setRequired(true)),
         new SlashCommandBuilder()
             .setName('hatırlatma')
@@ -2236,7 +2232,7 @@ client.on('interactionCreate', async interaction => {
 
         if (interaction.customId.startsWith('del_media_')) {
             const ownerId = interaction.customId.replace('del_media_', '');
-            if (interaction.user.id === ownerId || (interaction.member && interaction.member.permissions.has(PermissionsBitField.Flags.ManageMessages))) {
+            if (interaction.user.id === ownerId || interaction.member.permissions.has(PermissionsBitField.Flags.ManageMessages)) {
                 await interaction.message.delete().catch(() => {});
             } else {
                 await interaction.reply({ content: 'Bu medyayı silmek için yetkiniz yok.', flags: MessageFlags.Ephemeral });
